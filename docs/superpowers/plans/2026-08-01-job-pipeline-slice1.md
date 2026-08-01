@@ -2884,7 +2884,9 @@ export async function renderPdf(input: RenderInput, outPath: string): Promise<vo
     copyFileSync(join(here, 'template.typ'), join(work, 'template.typ'));
 
     const built = join(work, 'out.pdf');
-    await execFileAsync('typst', ['compile', join(work, 'template.typ'), built], { timeout: 20_000 });
+    // TYPST_BIN lets a non-PATH install (or CI) point at the binary directly.
+    const typstBin = process.env.TYPST_BIN ?? 'typst';
+    await execFileAsync(typstBin, ['compile', join(work, 'template.typ'), built], { timeout: 20_000 });
 
     mkdirSync(dirname(outPath), { recursive: true });
     copyFileSync(built, outPath);
@@ -2894,14 +2896,31 @@ export async function renderPdf(input: RenderInput, outPath: string): Promise<vo
 }
 ```
 
-- [ ] **Step 5: Verify Typst is installed, then run the test**
+- [ ] **Step 5: Verify Typst is reachable, then run the test**
 
-```bash
-typst --version
+Typst 0.15.1 is already installed at:
+
+```
+C:\Users\Samiksha Batra\AppData\Local\Microsoft\WinGet\Packages\Typst.Typst_Microsoft.Winget.Source_8wekyb3d8bbwe\typst-x86_64-pc-windows-msvc\typst.exe
 ```
 
-If this fails, install it (`winget install --id Typst.Typst`) and reopen the
-shell. Then:
+It is on the user PATH in the registry, but shells started before the install
+do not see it. Check:
+
+```bash
+command -v typst || echo "not on PATH — use TYPST_BIN"
+```
+
+If it is not found, export `TYPST_BIN` before running the test:
+
+```bash
+export TYPST_BIN="/c/Users/Samiksha Batra/AppData/Local/Microsoft/WinGet/Packages/Typst.Typst_Microsoft.Winget.Source_8wekyb3d8bbwe/typst-x86_64-pc-windows-msvc/typst.exe"
+```
+
+Also add `TYPST_BIN=` to `.env.example` with a comment that it is optional and
+only needed when `typst` is not on PATH.
+
+Then:
 
 Run: `npx vitest run test/tailor/render.test.ts`
 Expected: PASS — 5 tests, including a real PDF on disk starting with `%PDF`
