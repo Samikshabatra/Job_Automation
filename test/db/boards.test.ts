@@ -31,3 +31,13 @@ it('excludes deactivated boards', () => {
   expect(listActiveBoards(db)).toHaveLength(0);
   expect(boardExists(db, 'greenhouse', 'acme')).toBe(true);
 });
+
+it('reactivates a deactivated board on re-upsert', () => {
+  const id = upsertBoard(db, acme);
+  deactivateBoard(db, id);
+  expect(listActiveBoards(db)).toHaveLength(0);
+
+  const second = upsertBoard(db, acme);
+  expect(second).toBe(id);
+  expect(listActiveBoards(db)).toHaveLength(1);
+});

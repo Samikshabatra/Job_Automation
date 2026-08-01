@@ -5,7 +5,7 @@ export function upsertBoard(db: Database, b: NewBoard): number {
   db.prepare(
     `INSERT INTO company_boards (ats_platform, board_token, company_name, discovered_via, discovered_at, active)
      VALUES (?, ?, ?, ?, ?, 1)
-     ON CONFLICT(ats_platform, board_token) DO UPDATE SET company_name = excluded.company_name`,
+     ON CONFLICT(ats_platform, board_token) DO UPDATE SET company_name = excluded.company_name, active = 1`,
   ).run(b.atsPlatform, b.boardToken, b.companyName, b.discoveredVia, new Date().toISOString());
 
   const row = db.prepare('SELECT id FROM company_boards WHERE ats_platform = ? AND board_token = ?')

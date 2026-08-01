@@ -18,7 +18,10 @@ export function insertJob(db: Database, job: NewJob): number | null {
       .run({ ...job, firstSeenAt: now, createdAt: now });
     return Number(info.lastInsertRowid);
   } catch (err) {
-    if (err instanceof Error && err.message.includes('UNIQUE')) return null;
+    const code = err instanceof Error ? (err as Error & { code?: string }).code : undefined;
+    if (code === 'SQLITE_CONSTRAINT_UNIQUE' && err instanceof Error && err.message.includes('jobs.fingerprint')) {
+      return null;
+    }
     throw err;
   }
 }

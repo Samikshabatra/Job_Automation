@@ -36,6 +36,10 @@ describe('insertJob', () => {
     expect(row.status).toBe('new');
     expect(row.first_seen_at).toMatch(/^\d{4}-\d{2}-\d{2}T/);
   });
+
+  it('still throws on a non-fingerprint constraint violation (foreign key)', () => {
+    expect(() => insertJob(db, { ...base, fingerprint: 'fp-fk', boardId: 999999 })).toThrow();
+  });
 });
 
 describe('updateJobStatus', () => {
@@ -80,5 +84,18 @@ describe('markMissingJobsClosed', () => {
     updateJobStatus(db, id, 'submitted');
     expect(markMissingJobsClosed(db, boardId, [])).toBe(0);
     expect(getJobByFingerprint(db, 'sub')!.status).toBe('submitted');
+  });
+
+  it('closes all open jobs on a board when it returns zero listings', () => {
+    const boardId = upsertBoard(db, {
+      atsPlatform: 'ashby', boardToken: 'gamma',
+      companyName: 'Gamma', discoveredVia: 'manual',
+    });
+    insertJob(db, { ...base, fingerprint: 'zero-1', sourceJobId: '1', boardId });
+    insertJob(db, { ...base, fingerprint: 'zero-2', sourceJobId: '2', boardId });
+
+    expect(markMissingJobsClosed(db, boardId, [])).toBe(2);
+    expect(getJobByFingerprint(db, 'zero-1')!.status).toBe('closed');
+    expect(getJobByFingerprint(db, 'zero-2')!.status).toBe('closed');
   });
 });
