@@ -3,4 +3,6 @@ dist/
 .env
 data/*.db
 runs/
+resume/*.json
+!resume/*.example.json
 .superpowers/

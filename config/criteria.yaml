@@ -1,0 +1,22 @@
+titles:
+  include: [ai engineer, ai automation engineer, ml engineer, machine learning engineer,
+             data analyst, data engineer, data scientist, analytics engineer,
+             applied scientist, nlp engineer, mlops engineer]
+  exclude: [senior,principal,director]
+experience:
+  max_years_required: 0         # reject if the JD's MINIMUM stated years exceeds this;
+                                # "0-2 years" has a minimum of 0 and passes
+locations:
+  include: [bengaluru,delhi, gurugram, noida, remote]
+freshness:
+  max_posted_age_days: 7        # older postings are never applied to
+  verify_open_before_submit: true
+scoring:
+  threshold: 60
+limits:
+  daily_cap: 30
+  per_company_open_applications: 3
+  min_delay_seconds: 45
+  max_delay_seconds: 120
+submission:
+  dry_run: true                 # must be flipped manually to go live

@@ -1,0 +1,8 @@
+# Add companies you want polled. Edits take effect on the next run.
+#   - name: Acme Corp        # ats/token resolved automatically
+#   - name: Beta Inc
+#     paused: true           # keep listed, stop applying
+#   - name: Gamma Ltd
+#     ats: lever             # manual override if resolution fails
+#     token: gamma
+companies: []
