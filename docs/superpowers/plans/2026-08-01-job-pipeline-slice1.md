@@ -1264,17 +1264,22 @@ export async function fetchText(url: string, init?: RequestInit): Promise<string
 /** Strips HTML tags and decodes the entities Greenhouse/Lever actually emit. */
 export function htmlToText(html: string): string {
   return html
+    // Decode entities FIRST: Greenhouse's `content` is HTML-escaped, so tags
+    // arrive as `&lt;p&gt;`. Stripping before decoding leaves them as literal text.
+    .replace(/&nbsp;/g, ' ')
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>')
+    .replace(/&quot;/g, '"')
+    .replace(/&#(\d+);/g, (_, d) => String.fromCharCode(Number(d)))
+    .replace(/&#x([0-9a-f]+);/gi, (_, d) => String.fromCharCode(parseInt(d, 16)))
+    // `&amp;` decodes LAST — decoding it first would turn `&amp;lt;` into `&lt;`
+    // and then into a live `<`, letting doubly-escaped markup reconstruct tags.
+    .replace(/&amp;/g, '&')
     .replace(/<script[\s\S]*?<\/script>/gi, ' ')
     .replace(/<style[\s\S]*?<\/style>/gi, ' ')
     .replace(/<\/(p|div|li|h[1-6])>/gi, '\n')
     .replace(/<br\s*\/?>/gi, '\n')
     .replace(/<[^>]+>/g, ' ')
-    .replace(/&nbsp;/g, ' ')
-    .replace(/&amp;/g, '&')
-    .replace(/&lt;/g, '<')
-    .replace(/&gt;/g, '>')
-    .replace(/&quot;/g, '"')
-    .replace(/&#(\d+);/g, (_, d) => String.fromCharCode(Number(d)))
     .replace(/[ \t]+/g, ' ')
     .replace(/\n{3,}/g, '\n\n')
     .trim();
@@ -1418,7 +1423,14 @@ export const greenhouseSource: JobSource = {
     const url = `https://boards-api.greenhouse.io/v1/boards/${encodeURIComponent(board.board_token)}/jobs?content=true`;
     try {
       const body = (await fetchJson(url)) as { jobs?: GhJob[] };
-      const jobs: RawJob[] = (body.jobs ?? []).map((j) => ({
+      const jobs: RawJob[] = (body.jobs ?? [])
+        // Drop entries missing the fields downstream depends on. `String(undefined)`
+        // would yield the literal "undefined" as sourceJobId, colliding across jobs
+        // and breaking board-delisting detection, submit-URL parsing and the
+        // liveness check. Use `!= null` so a legitimate id of 0 survives.
+        // Malformed entries are skipped; the board itself still reports ok: true.
+        .filter((j) => j.id != null && typeof j.absolute_url === 'string' && j.absolute_url.length > 0)
+        .map((j) => ({
         sourceJobId: String(j.id),
         url: j.absolute_url,
         company: board.company_name,
@@ -2958,6 +2970,18 @@ git commit -m "feat: typst resume rendering and archive paths"
 - Consumes: `JobSource`, `RawJob`, `SourceResult`, `fetchJson`, `htmlToText`
 - Produces: `leverSource`, `ashbySource`, `workableSource`, and
   `sourceFor(platform: AtsPlatform): JobSource`
+
+**Required of all three, carried over from Task 4:** each source must filter out
+entries missing the fields downstream depends on BEFORE mapping — the id field
+(`id` for Lever/Ashby, `shortcode` for Workable) and the URL field (`hostedUrl`,
+`jobUrl`, `url` respectively). Without it, `String(undefined)` becomes the literal
+`"undefined"` as `sourceJobId`, which collides across jobs and breaks board-delisting
+detection, submit-URL parsing and the liveness check. Use a `!= null` test for the id
+so a legitimate `0` survives, and require the URL to be a non-empty string. Skipped
+entries never fail the board: it still returns `ok: true` with the valid jobs.
+Each source needs the two guard tests Task 4 has — a partially-malformed response
+keeping only the good entries, and an all-malformed response returning
+`{ jobs: [], ok: true }`.
 
 - [ ] **Step 1: Save the fixtures**
 
