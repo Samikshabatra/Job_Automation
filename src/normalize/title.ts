@@ -1,6 +1,6 @@
 const ABBREVIATIONS: [RegExp, string][] = [
-  [/\bml\b/g, 'machine learning'],
   [/\bai\/ml\b/g, 'ai machine learning'],
+  [/\bml\b/g, 'machine learning'],
   [/\bnlp\b/g, 'natural language processing'],
   [/\bsde\b/g, 'software engineer'],
   [/\bswe\b/g, 'software engineer'],
@@ -10,8 +10,17 @@ const ABBREVIATIONS: [RegExp, string][] = [
   [/\bds\b/g, 'data scientist'],
 ];
 
-const LOCATION_SUFFIX =
-  /\s*[-–—,|]\s*(remote|hybrid|onsite|on-site|india|bengaluru|bangalore|delhi|gurgaon|gurugram|noida|hyderabad|pune|mumbai|chennai|anywhere|worldwide|us|usa|emea|apac)\b.*$/i;
+// Only the location keyword(s) themselves are stripped, plus any directly
+// chained keyword/qualifier (e.g. "- Bengaluru, India"). Anything else after
+// the separator (e.g. "- US Enterprise") is a differentiator, not a location,
+// and must survive.
+const LOCATION_KEYWORDS =
+  'remote|hybrid|onsite|on-site|india|bengaluru|bangalore|delhi|gurgaon|gurugram|noida|hyderabad|pune|mumbai|chennai|anywhere|worldwide|us|usa|emea|apac';
+
+const LOCATION_SUFFIX = new RegExp(
+  `\\s*[-–—,|]\\s*(?:${LOCATION_KEYWORDS})\\b(?:\\s*[-–—,|]\\s*(?:${LOCATION_KEYWORDS})\\b)*\\s*$`,
+  'i',
+);
 
 export function normalizeTitle(raw: string): string {
   let t = raw.toLowerCase();

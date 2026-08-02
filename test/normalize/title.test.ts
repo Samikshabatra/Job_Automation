@@ -27,6 +27,26 @@ describe('normalizeTitle', () => {
   });
 });
 
+describe('normalizeTitle location suffix boundaries', () => {
+  it('does not swallow a non-location qualifier after the separator', () => {
+    expect(normalizeTitle('Sales Manager - US Enterprise')).not.toBe(
+      normalizeTitle('Sales Manager - US SMB'),
+    );
+  });
+
+  it('still strips a chained location + qualifier suffix', () => {
+    expect(normalizeTitle('Data Analyst - Bengaluru, India')).toBe('data analyst');
+  });
+
+  it('still strips a single trailing location keyword', () => {
+    expect(normalizeTitle('Data Engineer - Remote')).toBe('data engineer');
+  });
+
+  it('retains non-keyword text that follows a location keyword', () => {
+    expect(normalizeTitle('ML Engineer - India Growth Team')).toContain('growth team');
+  });
+});
+
 describe('titleSimilarity', () => {
   it('scores identical normalized titles as 1', () => {
     expect(titleSimilarity('ML Engineer', 'Machine Learning Engineer')).toBe(1);

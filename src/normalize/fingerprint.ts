@@ -2,7 +2,7 @@ import { createHash } from 'node:crypto';
 import { normalizeTitle } from './title.js';
 import { normalizeLocation } from './location.js';
 
-const COMPANY_SUFFIX = /\b(inc|llc|ltd|limited|pvt|private|corp|corporation|co|gmbh|technologies|technology|labs|software)\b/g;
+const COMPANY_SUFFIX = /\b(inc|llc|ltd|limited|pvt|private|corp|corporation|gmbh)\b/g;
 
 export function normalizeCompany(raw: string): string {
   return raw

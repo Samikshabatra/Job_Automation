@@ -1,5 +1,5 @@
 const ALIASES: Record<string, string[]> = {
-  bengaluru: ['bengaluru', 'bangalore', 'blr', 'bangaluru'],
+  bengaluru: ['bengaluru', 'bangalore', 'blr'],
   gurugram: ['gurugram', 'gurgaon'],
   delhi: ['delhi', 'new delhi', 'delhi ncr', 'ncr'],
   noida: ['noida', 'greater noida'],
