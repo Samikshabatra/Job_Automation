@@ -1562,8 +1562,41 @@ Expected: FAIL — module not found
 `src/score/years.ts`:
 
 ```ts
-/** Words that must appear near a number for it to count as an experience requirement. */
-const EXPERIENCE_CONTEXT = /(experience|exp\b|working|industry|professional|hands[- ]on|building|in\s+(data|ml|ai|analytics|software))/i;
+/**
+ * Context required before a number-of-years match counts as an experience
+ * requirement. Took three fix rounds to get right; the comments record why.
+ *
+ * Bare `role`, `required`, `preferred` are deliberately NOT accepted alone —
+ * they are among the commonest words in a posting and the ±60-char window is
+ * not sentence-aware, so bare acceptance leaked across clause boundaries
+ * ("This role was created 3 years ago." → 3).
+ *
+ * Qualifiers count only when anchored onto the experience phrase, either order:
+ *   - AFTER:  "<years> preferred/required", or "for <level> role(s)"
+ *   - BEFORE: "required/requires/requiring/preferred/must have/should have/
+ *              minimum (of)/at least <N> years" — separated from the number by
+ *              only whitespace, colon or hyphen, never another word, so
+ *              "preferred within 2 years" correctly fails to anchor.
+ *
+ * `with` and `brings` were tried as BEFORE-qualifiers and WITHDRAWN: they
+ * attach to any noun ("startup with 5 years of history", "brings 3 years of
+ * runway") and produced false positives on company/funding blurbs. Only
+ * qualifiers that unambiguously introduce a CANDIDATE requirement belong here.
+ */
+const EXPERIENCE_CONTEXT =
+  /(experience|exp\b|working|industry|professional|hands[- ]on|building|years?\s+(?:preferred|required)|for\s+(?:senior|junior|associate|entry|mid)(?:[\s-]*level)?\s*roles?|\b(?:required?|requiring|requires|preferred|prefer|must\s+have|should\s+have|minimum(?:\s+of)?|at\s+least)[\s:-]*\d|in\s+(data|ml|ai|analytics|software))/i;
+
+/**
+ * Non-experience nouns a legitimate qualifier can attach to instead of a
+ * candidate's experience ("contract requires 2 years of exclusivity",
+ * "minimum of 2 years lease"). Checked AFTER the match; suppresses it.
+ */
+const NEGATIVE_NOUN =
+  /\b(history|runway|traction|lease|exclusivity|contract|tenure|notice\s+period|funding|operation|existence|warranty|validity)\b/i;
+
+function windowAfter(text: string, index: number, radius = 25): string {
+  return text.slice(index, Math.min(text.length, index + radius));
+}
 
 const FRESHER_SIGNALS = [
   /\bfresher(s)?\b/i,
@@ -1594,9 +1627,12 @@ function collect(text: string, pattern: RegExp, group: number): number[] {
   const found: number[] = [];
   pattern.lastIndex = 0;
   for (const m of text.matchAll(pattern)) {
-    const context = windowAround(text, m.index ?? 0);
+    const start = m.index ?? 0;
+    const end = start + m[0].length;
+    const context = windowAround(text, start);
     if (DEGREE.test(context)) continue;
     if (!EXPERIENCE_CONTEXT.test(context)) continue;
+    if (NEGATIVE_NOUN.test(windowAfter(text, end))) continue;
     const n = Number(m[group]);
     if (Number.isFinite(n) && n >= 0 && n <= 40) found.push(n);
   }
