@@ -1,3 +1,8 @@
+// Fresher-signal patterns are shared with `src/score/extract.ts` (canonical
+// list: `FRESHER_SIGNAL_PATTERNS`) so this hard-filter gate and the scoring
+// fresher bonus never disagree about what counts as a fresher-facing JD.
+import { FRESHER_SIGNAL_PATTERNS } from './extract.js';
+
 /**
  * Context the gate requires before a bare number-of-years match counts as an
  * experience requirement.
@@ -54,17 +59,6 @@ function windowAfter(text: string, index: number, radius = 25): string {
   return text.slice(index, Math.min(text.length, index + radius));
 }
 
-const FRESHER_SIGNALS = [
-  /\bfresher(s)?\b/i,
-  /\brecent graduate(s)?\b/i,
-  /\bnew grad(uate)?s?\b/i,
-  /\bentry[- ]level\b/i,
-  /\bcampus hire\b/i,
-  /\b\d{4} batch\b/i,
-  /\binternship experience\b/i,
-  /\bno prior experience\b/i,
-];
-
 /** "up to 2 years", "less than 2 years" — an upper bound, so the minimum is 0. */
 const UPPER_BOUND_ONLY = /\b(up to|less than|under|fewer than|maximum(?: of)?|max)\s+\d+\s*(\+)?\s*(years?|yrs?)/i;
 
@@ -99,7 +93,7 @@ export function extractMinYears(jdText: string): number {
   if (!jdText) return 0;
   const text = jdText.toLowerCase();
 
-  if (FRESHER_SIGNALS.some((re) => re.test(text))) return 0;
+  if (FRESHER_SIGNAL_PATTERNS.some((re) => re.test(text))) return 0;
   if (UPPER_BOUND_ONLY.test(text)) return 0;
 
   const candidates = [

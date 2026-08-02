@@ -1,6 +1,14 @@
 export type SkillDict = Record<string, string[]>;
 
-const FRESHER_SIGNALS = [
+/**
+ * Canonical fresher-signal patterns, shared with `src/score/years.ts` so the
+ * hard-filter years gate and the scoring fresher bonus never disagree about
+ * what counts as a fresher-facing JD. This is the UNION of the two lists that
+ * previously diverged (extract.ts had the "0-2 years" numeric pattern;
+ * years.ts had "no prior experience") — do not drop either half when editing.
+ * `years.ts` imports this array rather than keeping its own copy.
+ */
+export const FRESHER_SIGNAL_PATTERNS = [
   /\bfresher(s)?\b/i,
   /\bentry[- ]level\b/i,
   /\bnew grad(uate)?s?\b/i,
@@ -9,6 +17,7 @@ const FRESHER_SIGNALS = [
   /\b\d{4} batch\b/i,
   /\b0\s*(?:-|–|to)\s*[12]\s*(years?|yrs?)/i,
   /\binternship experience\b/i,
+  /\bno prior experience\b/i,
 ];
 
 function escapeRegex(s: string): string {
@@ -33,5 +42,5 @@ export function extractSkills(jdText: string, dict: SkillDict): string[] {
 }
 
 export function hasFresherSignal(jdText: string): boolean {
-  return FRESHER_SIGNALS.some((re) => re.test(jdText));
+  return FRESHER_SIGNAL_PATTERNS.some((re) => re.test(jdText));
 }

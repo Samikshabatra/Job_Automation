@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { extractSkills, hasFresherSignal } from '../../src/score/extract.js';
+import { extractMinYears } from '../../src/score/years.js';
 
 const dict = {
   python: ['python', 'py'],
@@ -8,6 +9,12 @@ const dict = {
   pytorch: ['pytorch', 'torch'],
   tableau: ['tableau'],
   kubernetes: ['kubernetes', 'k8s'],
+};
+
+const specialCharDict = {
+  'c++': ['c++'],
+  '.net': ['.net'],
+  'node.js': ['node.js'],
 };
 
 describe('extractSkills', () => {
@@ -31,6 +38,12 @@ describe('extractSkills', () => {
   it('returns an empty array for an empty JD', () => {
     expect(extractSkills('', dict)).toEqual([]);
   });
+
+  it('matches regex-special-character aliases literally and does not throw', () => {
+    const jd = 'We use .NET and C++ and Node.js in production.';
+    expect(() => extractSkills(jd, specialCharDict)).not.toThrow();
+    expect(extractSkills(jd, specialCharDict).sort()).toEqual(['.net', 'c++', 'node.js']);
+  });
 });
 
 describe('hasFresherSignal', () => {
@@ -45,5 +58,15 @@ describe('hasFresherSignal', () => {
 
   it('returns false for a senior JD', () => {
     expect(hasFresherSignal('5+ years leading ML teams')).toBe(false);
+  });
+});
+
+describe('hasFresherSignal and extractMinYears stay in sync', () => {
+  it.each([
+    'No prior experience necessary',
+    '0-2 years of experience',
+  ])('"%s" is a fresher signal AND has a zero minimum year requirement', (jd) => {
+    expect(hasFresherSignal(jd)).toBe(true);
+    expect(extractMinYears(jd)).toBe(0);
   });
 });

@@ -17,11 +17,31 @@ export type FilterVerdict =
 
 const DAY_MS = 86_400_000;
 
+function escapeRegex(s: string): string {
+  return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+/** Returns a valid Date, or null if `value` is missing/unparseable. */
+function toValidDate(value: string | null): Date | null {
+  if (!value) return null;
+  const d = new Date(value);
+  return Number.isNaN(d.getTime()) ? null : d;
+}
+
 export function applyHardFilters(input: FilterInput, criteria: Criteria, now: Date): FilterVerdict {
-  const effectiveDate = new Date(input.postedAt ?? input.firstSeenAt);
-  const ageDays = (now.getTime() - effectiveDate.getTime()) / DAY_MS;
-  if (ageDays > criteria.freshness.max_posted_age_days) {
-    return { pass: false, status: 'stale', reason: `posted ${Math.round(ageDays)}d ago` };
+  // postedAt is preferred; fall back to firstSeenAt when postedAt is missing
+  // or unparseable. If BOTH are unparseable we cannot determine age at all —
+  // fail OPEN (treat the job as fresh) rather than reject it, because
+  // rejecting on unknown age would silently drop a job that might be
+  // perfectly fresh. The pre-submit liveness check
+  // (`freshness.verify_open_before_submit`) is the real safety net that
+  // catches dead postings before we actually apply.
+  const effectiveDate = toValidDate(input.postedAt) ?? toValidDate(input.firstSeenAt);
+  if (effectiveDate) {
+    const ageDays = (now.getTime() - effectiveDate.getTime()) / DAY_MS;
+    if (ageDays > criteria.freshness.max_posted_age_days) {
+      return { pass: false, status: 'stale', reason: `posted ${Math.round(ageDays)}d ago` };
+    }
   }
 
   const minYears = extractMinYears(input.jdText);
@@ -30,7 +50,10 @@ export function applyHardFilters(input: FilterInput, criteria: Criteria, now: Da
   }
 
   const title = normalizeTitle(input.title);
-  const excluded = criteria.titles.exclude.find((t) => title.includes(normalizeTitle(t)));
+  const excluded = criteria.titles.exclude.find((t) => {
+    const term = normalizeTitle(t);
+    return new RegExp(`\\b${escapeRegex(term)}\\b`).test(title);
+  });
   if (excluded) {
     return { pass: false, status: 'skipped', reason: `excluded title term "${excluded}"` };
   }
