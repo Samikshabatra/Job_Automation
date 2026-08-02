@@ -67,4 +67,36 @@ describe('extractMinYears — traps', () => {
   it('is case insensitive', () => {
     expect(extractMinYears('MINIMUM 2 YEARS OF EXPERIENCE')).toBe(2);
   });
+
+  it('does not let "role" leak across a clause boundary onto an unrelated number', () => {
+    expect(extractMinYears('This role was created 3 years ago.')).toBe(0);
+  });
+
+  it('does not let "preferred" leak backward across a clause onto an unrelated number', () => {
+    expect(extractMinYears('Relocation is preferred within 2 years of joining.')).toBe(0);
+  });
+
+  it('does not let "role" leak across a semicolon-free compound sentence', () => {
+    expect(extractMinYears('We have grown 5 years running and this role is new.')).toBe(0);
+  });
+
+  it('ignores undergraduate education durations', () => {
+    expect(extractMinYears('4-year undergraduate education required')).toBe(0);
+  });
+
+  it('ignores an unhyphenated degree duration', () => {
+    expect(extractMinYears('4 year undergraduate education required')).toBe(0);
+  });
+
+  it('ignores a tenure figure when the sentence merely contains "role"', () => {
+    expect(extractMinYears('Our team has 6 years of history and this role is open')).toBe(0);
+  });
+
+  it('ignores "preferred" when it is not attached to a years phrase', () => {
+    expect(extractMinYears('The role is preferred for those who can start in 2 weeks')).toBe(0);
+  });
+
+  it('ignores "required" when it is not attached to a years phrase', () => {
+    expect(extractMinYears('This position has been open 3 years and is required headcount')).toBe(0);
+  });
 });

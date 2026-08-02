@@ -1,5 +1,23 @@
-/** Words that must appear near a number for it to count as an experience requirement. */
-const EXPERIENCE_CONTEXT = /(experience|exp\b|working|industry|professional|hands[- ]on|building|preferred|required|role(s)?|in\s+(data|ml|ai|analytics|software))/i;
+/**
+ * Context the gate requires before a bare number-of-years match counts as an
+ * experience requirement.
+ *
+ * Bare words like "role", "required", and "preferred" are deliberately NOT
+ * accepted on their own — they are among the most common words in any job
+ * posting and a ±60-char window is not sentence-aware, so accepting them bare
+ * leaked false positives across clause boundaries, e.g.
+ * "This role was created 3 years ago." or
+ * "Relocation is preferred within 2 years of joining."
+ *
+ * Instead, those qualifiers only count when anchored directly onto the
+ * experience phrase: "<years> preferred/required" (the qualifier must
+ * immediately follow "year(s)"), or "for <level> role(s)" (an explicit
+ * seniority-level role phrase such as "for senior roles"). Anything else must
+ * match a direct experience-domain word (experience, exp, working, industry,
+ * professional, hands-on, building, in data/ml/ai/analytics/software).
+ */
+const EXPERIENCE_CONTEXT =
+  /(experience|exp\b|working|industry|professional|hands[- ]on|building|years?\s+(?:preferred|required)|for\s+(?:senior|junior|associate|entry|mid)(?:[\s-]*level)?\s*roles?|in\s+(data|ml|ai|analytics|software))/i;
 
 const FRESHER_SIGNALS = [
   /\bfresher(s)?\b/i,
