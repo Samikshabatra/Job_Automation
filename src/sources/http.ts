@@ -33,6 +33,7 @@ export function htmlToText(html: string): string {
     .replace(/&gt;/g, '>')
     .replace(/&quot;/g, '"')
     .replace(/&#(\d+);/g, (_, d) => String.fromCharCode(Number(d)))
+    .replace(/&#x([0-9a-f]+);/gi, (_, d) => String.fromCharCode(parseInt(d, 16)))
     .replace(/&amp;/g, '&')
     .replace(/<script[\s\S]*?<\/script>/gi, ' ')
     .replace(/<style[\s\S]*?<\/style>/gi, ' ')

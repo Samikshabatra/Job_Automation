@@ -25,16 +25,22 @@ export const greenhouseSource: JobSource = {
     const url = `https://boards-api.greenhouse.io/v1/boards/${encodeURIComponent(board.board_token)}/jobs?content=true`;
     try {
       const body = (await fetchJson(url)) as { jobs?: GhJob[] };
-      const jobs: RawJob[] = (body.jobs ?? []).map((j) => ({
-        sourceJobId: String(j.id),
-        url: j.absolute_url,
-        company: board.company_name,
-        title: j.title,
-        location: j.location?.name ?? null,
-        postedAt: toIso(j.updated_at),
-        jdText: htmlToText(j.content ?? ''),
-        atsPlatform: 'greenhouse',
-      }));
+      const jobs: RawJob[] = (body.jobs ?? [])
+        // A job with no id or absolute_url is unusable downstream (dedupe,
+        // apply-URL parsing, liveness checks all key off these). Drop it
+        // rather than emitting a RawJob with a fake sourceJobId or a
+        // missing url — one bad entry must not fail the whole board.
+        .filter((j) => j.id != null && typeof j.absolute_url === 'string' && j.absolute_url.length > 0)
+        .map((j) => ({
+          sourceJobId: String(j.id),
+          url: j.absolute_url,
+          company: board.company_name,
+          title: j.title,
+          location: j.location?.name ?? null,
+          postedAt: toIso(j.updated_at),
+          jdText: htmlToText(j.content ?? ''),
+          atsPlatform: 'greenhouse',
+        }));
       return { jobs, ok: true };
     } catch (err) {
       return { jobs: [], ok: false, error: err instanceof Error ? err.message : String(err) };

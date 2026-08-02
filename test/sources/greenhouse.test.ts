@@ -61,4 +61,46 @@ describe('greenhouseSource', () => {
     expect(result.ok).toBe(true);
     expect(result.jobs).toEqual([]);
   });
+
+  it('drops malformed entries (missing id or absolute_url) but keeps the good ones', async () => {
+    mockFetch({
+      jobs: [
+        {
+          id: 4012345,
+          title: 'Data Analyst (Bengaluru)',
+          absolute_url: 'https://boards.greenhouse.io/acme/jobs/4012345',
+          updated_at: '2026-07-30T09:15:00-04:00',
+          location: { name: 'Bangalore, India' },
+          content: 'fine',
+        },
+        {
+          title: 'Missing id',
+          absolute_url: 'https://boards.greenhouse.io/acme/jobs/9999999',
+        },
+        {
+          id: 4012347,
+          title: 'Missing absolute_url',
+        },
+      ],
+    });
+    const result = await greenhouseSource.fetchJobs(board);
+    expect(result.ok).toBe(true);
+    expect(result.jobs).toHaveLength(1);
+    expect(result.jobs[0].sourceJobId).toBe('4012345');
+    expect(result.jobs.some((j) => j.sourceJobId === 'undefined')).toBe(false);
+    expect(result.jobs.every((j) => !!j.url)).toBe(true);
+  });
+
+  it('returns an empty successful result when every job entry is malformed', async () => {
+    mockFetch({
+      jobs: [
+        { title: 'Missing id', absolute_url: 'https://boards.greenhouse.io/acme/jobs/9999999' },
+        { id: 4012347, title: 'Missing absolute_url' },
+        { id: null, title: 'Null id', absolute_url: '' },
+      ],
+    });
+    const result = await greenhouseSource.fetchJobs(board);
+    expect(result.ok).toBe(true);
+    expect(result.jobs).toEqual([]);
+  });
 });
