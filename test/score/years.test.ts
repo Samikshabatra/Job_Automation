@@ -100,3 +100,44 @@ describe('extractMinYears — traps', () => {
     expect(extractMinYears('This position has been open 3 years and is required headcount')).toBe(0);
   });
 });
+
+describe('extractMinYears — qualifier precedes the number', () => {
+  const cases: [string, number][] = [
+    ['Required: 3 years of Python', 3],
+    ['Candidates should have 3 years of relevant work', 3],
+    ['Senior role requiring 6 years', 6],
+    ['We require 2 years experience', 2],
+    ['Preferred qualifications: 4 years in analytics', 4],
+    ['Minimum 2 years experience required', 2],
+    ['Must have 3 years of hands-on ML experience', 3],
+    ['2-4 years of relevant experience', 2],
+  ];
+  it.each(cases)('%s → %i', (jd, expected) => {
+    expect(extractMinYears(jd)).toBe(expected);
+  });
+
+  // "brings"/"with" were withdrawn as qualifiers: they attach to any noun,
+  // not specifically a candidate's experience ("this funding round brings
+  // 3 years of runway"), which produced false positives on company/funding
+  // blurbs. This phrasing is now correctly treated as unstated -> 0. See
+  // src/score/years.ts EXPERIENCE_CONTEXT doc comment for the full rationale.
+  it('no longer anchors on "brings" (withdrawn qualifier — now 0, not 5)', () => {
+    expect(extractMinYears('Ideal candidate brings 5 years to the table')).toBe(0);
+  });
+});
+
+describe('extractMinYears — negative-noun suppression (qualifier attaches to a non-experience subject)', () => {
+  const cases: string[] = [
+    'We are a startup with 5 years of history behind us',
+    'A product with 3 years of market traction',
+    'You will work with 4 years of historical data',
+    'Partnering with 2 years of runway secured',
+    'This funding round brings 3 years of runway',
+    'The contract requires 2 years of exclusivity',
+    'Minimum of 2 years lease commitment for the office',
+    'The role is required to relocate within 3 years',
+  ];
+  it.each(cases)('"%s" → 0', (jd) => {
+    expect(extractMinYears(jd)).toBe(0);
+  });
+});

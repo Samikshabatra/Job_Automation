@@ -10,14 +10,49 @@
  * "Relocation is preferred within 2 years of joining."
  *
  * Instead, those qualifiers only count when anchored directly onto the
- * experience phrase: "<years> preferred/required" (the qualifier must
- * immediately follow "year(s)"), or "for <level> role(s)" (an explicit
- * seniority-level role phrase such as "for senior roles"). Anything else must
- * match a direct experience-domain word (experience, exp, working, industry,
- * professional, hands-on, building, in data/ml/ai/analytics/software).
+ * experience phrase, in either order:
+ *   - AFTER the number: "<years> preferred/required" (the qualifier must
+ *     immediately follow "year(s)"), or "for <level> role(s)" (an explicit
+ *     seniority-level role phrase such as "for senior roles").
+ *   - BEFORE the number: "required/require/requires/requiring/preferred/
+ *     prefer/must have/should have/minimum (of)/at least <N> years" — real
+ *     postings phrase requirements this way at least as often ("Required:
+ *     3 years of Python"). The qualifier and the number may only be
+ *     separated by whitespace, a colon, or a hyphen (`[\s:-]*`) — never
+ *     another word — so "preferred within 2 years" (an intervening word,
+ *     "within") still correctly fails to anchor and stays unmatched.
+ *
+ *     NOTE: "with" and "brings" were tried here and withdrawn — they attach
+ *     to any noun ("startup with 5 years of history", "brings 3 years of
+ *     runway"), not specifically to a candidate's experience, and produced
+ *     false positives on company/funding/product blurbs. Only qualifiers
+ *     that unambiguously introduce a *candidate* requirement are listed.
+ * Anything else must match a direct experience-domain word (experience, exp,
+ * working, industry, professional, hands-on, building,
+ * in data/ml/ai/analytics/software).
+ *
+ * Even after this gate passes, `collect()` applies one more check —
+ * `NEGATIVE_NOUN` — because qualifiers like "requires" and "minimum of" are
+ * also legitimately used for non-experience requirements ("requires 2 years
+ * of exclusivity", "minimum of 2 years lease"). See `NEGATIVE_NOUN` below.
  */
 const EXPERIENCE_CONTEXT =
-  /(experience|exp\b|working|industry|professional|hands[- ]on|building|years?\s+(?:preferred|required)|for\s+(?:senior|junior|associate|entry|mid)(?:[\s-]*level)?\s*roles?|in\s+(data|ml|ai|analytics|software))/i;
+  /(experience|exp\b|working|industry|professional|hands[- ]on|building|years?\s+(?:preferred|required)|for\s+(?:senior|junior|associate|entry|mid)(?:[\s-]*level)?\s*roles?|\b(?:required?|requiring|requires|preferred|prefer|must\s+have|should\s+have|minimum(?:\s+of)?|at\s+least)[\s:-]*\d|in\s+(data|ml|ai|analytics|software))/i;
+
+/**
+ * Non-experience nouns that a "requires"/"minimum of"-style qualifier can
+ * legitimately attach to instead of a candidate's years of experience
+ * ("The contract requires 2 years of exclusivity", "Minimum of 2 years lease
+ * commitment"). If one of these immediately follows the matched years
+ * phrase, the match is discarded regardless of how EXPERIENCE_CONTEXT was
+ * satisfied.
+ */
+const NEGATIVE_NOUN =
+  /\b(history|runway|traction|lease|exclusivity|contract|tenure|notice\s+period|funding|operation|existence|warranty|validity)\b/i;
+
+function windowAfter(text: string, index: number, radius = 25): string {
+  return text.slice(index, Math.min(text.length, index + radius));
+}
 
 const FRESHER_SIGNALS = [
   /\bfresher(s)?\b/i,
@@ -48,9 +83,12 @@ function collect(text: string, pattern: RegExp, group: number): number[] {
   const found: number[] = [];
   pattern.lastIndex = 0;
   for (const m of text.matchAll(pattern)) {
-    const context = windowAround(text, m.index ?? 0);
+    const start = m.index ?? 0;
+    const end = start + m[0].length;
+    const context = windowAround(text, start);
     if (DEGREE.test(context)) continue;
     if (!EXPERIENCE_CONTEXT.test(context)) continue;
+    if (NEGATIVE_NOUN.test(windowAfter(text, end))) continue;
     const n = Number(m[group]);
     if (Number.isFinite(n) && n >= 0 && n <= 40) found.push(n);
   }
