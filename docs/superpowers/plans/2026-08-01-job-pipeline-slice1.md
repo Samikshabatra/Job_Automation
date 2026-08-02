@@ -957,8 +957,9 @@ Expected: FAIL — module not found
 
 ```ts
 const ABBREVIATIONS: [RegExp, string][] = [
-  [/\bml\b/g, 'machine learning'],
+  // `ai/ml` MUST precede `ml` — otherwise \bml\b consumes the ml inside ai/ml first.
   [/\bai\/ml\b/g, 'ai machine learning'],
+  [/\bml\b/g, 'machine learning'],
   [/\bnlp\b/g, 'natural language processing'],
   [/\bsde\b/g, 'software engineer'],
   [/\bswe\b/g, 'software engineer'],
@@ -968,8 +969,17 @@ const ABBREVIATIONS: [RegExp, string][] = [
   [/\bds\b/g, 'data scientist'],
 ];
 
-const LOCATION_SUFFIX =
-  /\s*[-–—,|]\s*(remote|hybrid|onsite|on-site|india|bengaluru|bangalore|delhi|gurgaon|gurugram|noida|hyderabad|pune|mumbai|chennai|anywhere|worldwide|us|usa|emea|apac)\b.*$/i;
+// Strip ONLY the location keyword(s), plus any directly chained keyword
+// (e.g. "- Bengaluru, India"). A trailing `.*$` here would also eat
+// differentiators — "X - US Enterprise" and "X - US SMB" would collapse to the
+// same fingerprint and one of the two roles would never be applied to.
+const LOCATION_KEYWORDS =
+  'remote|hybrid|onsite|on-site|india|bengaluru|bangalore|delhi|gurgaon|gurugram|noida|hyderabad|pune|mumbai|chennai|anywhere|worldwide|us|usa|emea|apac';
+
+const LOCATION_SUFFIX = new RegExp(
+  `\\s*[-–—,|]\\s*(?:${LOCATION_KEYWORDS})\\b(?:\\s*[-–—,|]\\s*(?:${LOCATION_KEYWORDS})\\b)*\\s*$`,
+  'i',
+);
 
 export function normalizeTitle(raw: string): string {
   let t = raw.toLowerCase();
@@ -1142,7 +1152,10 @@ import { createHash } from 'node:crypto';
 import { normalizeTitle } from './title.js';
 import { normalizeLocation } from './location.js';
 
-const COMPANY_SUFFIX = /\b(inc|llc|ltd|limited|pvt|private|corp|corporation|co|gmbh|technologies|technology|labs|software)\b/g;
+// Legal-entity forms ONLY. Generic descriptors (labs, software, technologies,
+// co) must NOT be stripped — "Turing Labs" and "Turing Software" are plausibly
+// different employers, and collapsing them would make one read as already-applied.
+const COMPANY_SUFFIX = /\b(inc|llc|ltd|limited|pvt|private|corp|corporation|gmbh)\b/g;
 
 export function normalizeCompany(raw: string): string {
   return raw
