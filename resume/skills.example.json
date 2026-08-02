@@ -1,0 +1,21 @@
+{
+  "python": ["python", "py"],
+  "sql": ["sql", "postgresql", "mysql", "t-sql"],
+  "pandas": ["pandas"],
+  "numpy": ["numpy"],
+  "scikit-learn": ["scikit-learn", "sklearn"],
+  "machine learning": ["machine learning", "ml"],
+  "deep learning": ["deep learning", "dl"],
+  "pytorch": ["pytorch", "torch"],
+  "tensorflow": ["tensorflow", "tf"],
+  "nlp": ["nlp", "natural language processing"],
+  "llm": ["llm", "large language model", "gpt", "transformers"],
+  "power bi": ["power bi", "powerbi"],
+  "tableau": ["tableau"],
+  "excel": ["excel", "advanced excel"],
+  "git": ["git", "github"],
+  "docker": ["docker"],
+  "aws": ["aws", "amazon web services"],
+  "airflow": ["airflow", "apache airflow"],
+  "spark": ["spark", "pyspark", "apache spark"]
+}
