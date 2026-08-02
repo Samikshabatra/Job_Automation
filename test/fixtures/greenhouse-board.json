@@ -1,0 +1,21 @@
+{
+  "jobs": [
+    {
+      "id": 4012345,
+      "title": "Data Analyst (Bengaluru)",
+      "absolute_url": "https://boards.greenhouse.io/acme/jobs/4012345",
+      "updated_at": "2026-07-30T09:15:00-04:00",
+      "location": { "name": "Bangalore, India" },
+      "content": "&lt;p&gt;We are hiring a Data Analyst.&lt;/p&gt;&lt;p&gt;0-2 years of experience. SQL, Python, Tableau.&lt;/p&gt;"
+    },
+    {
+      "id": 4012346,
+      "title": "Senior ML Engineer",
+      "absolute_url": "https://boards.greenhouse.io/acme/jobs/4012346",
+      "updated_at": "2026-07-28T09:15:00-04:00",
+      "location": { "name": "Remote" },
+      "content": "&lt;p&gt;5+ years building ML systems.&lt;/p&gt;"
+    }
+  ],
+  "meta": { "total": 2 }
+}
