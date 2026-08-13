@@ -1,0 +1,12 @@
+{
+  "results": [
+    {
+      "shortcode": "ABC123",
+      "title": "Data Analyst",
+      "url": "https://delta.workable.com/j/ABC123",
+      "published_on": "2026-07-31",
+      "location": { "city": "Gurgaon", "country": "India" },
+      "description": "<p>Analyse data. 0-1 years. SQL, Excel.</p>"
+    }
+  ]
+}

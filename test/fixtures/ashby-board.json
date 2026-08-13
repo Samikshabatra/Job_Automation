@@ -1,0 +1,12 @@
+{
+  "jobs": [
+    {
+      "id": "job_01",
+      "title": "Data Engineer",
+      "jobUrl": "https://jobs.ashbyhq.com/gamma/job_01",
+      "publishedAt": "2026-07-29T10:00:00.000Z",
+      "location": "Remote",
+      "descriptionPlain": "Build pipelines. Freshers welcome. SQL, Airflow."
+    }
+  ]
+}
