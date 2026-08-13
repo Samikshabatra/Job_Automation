@@ -1,6 +1,25 @@
+const SECRET_PARAMS = /^(app_key|app_id|api_key|apikey|key|token|access_token|password|secret)$/i;
+
+/**
+ * Error messages end up in run reports on disk, and some search APIs take
+ * credentials as query parameters, so the values are stripped before the URL
+ * is ever put into a message.
+ */
+export function redactUrl(raw: string): string {
+  try {
+    const url = new URL(raw);
+    for (const name of [...url.searchParams.keys()]) {
+      if (SECRET_PARAMS.test(name)) url.searchParams.set(name, 'REDACTED');
+    }
+    return url.toString();
+  } catch {
+    return raw;
+  }
+}
+
 export class HttpError extends Error {
   constructor(public status: number, url: string) {
-    super(`HTTP ${status} for ${url}`);
+    super(`HTTP ${status} for ${redactUrl(url)}`);
   }
 }
 

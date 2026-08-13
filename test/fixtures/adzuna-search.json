@@ -1,0 +1,21 @@
+{
+  "count": 2,
+  "results": [
+    {
+      "id": "1",
+      "title": "Data Analyst",
+      "company": { "display_name": "Beta Inc" },
+      "redirect_url": "https://jobs.lever.co/beta/abc-123",
+      "location": { "display_name": "Bengaluru, Karnataka" },
+      "created": "2026-07-30T10:00:00Z"
+    },
+    {
+      "id": "2",
+      "title": "Backend Engineer",
+      "company": { "display_name": "Unknown Co" },
+      "redirect_url": "https://example.com/careers/2",
+      "location": { "display_name": "Pune" },
+      "created": "2026-07-29T10:00:00Z"
+    }
+  ]
+}
