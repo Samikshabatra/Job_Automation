@@ -1,0 +1,7 @@
+{
+  "name": "Example Candidate",
+  "email": "example.apply@gmail.com",
+  "phone": "+91 90000 00000",
+  "location": "Bengaluru, India",
+  "links": { "linkedin": "https://linkedin.com/in/example", "github": "https://github.com/example" }
+}

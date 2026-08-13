@@ -1,0 +1,38 @@
+[
+  {
+    "id": "intern-acme",
+    "kind": "internship",
+    "org": "Acme Analytics",
+    "role": "Data Analyst Intern",
+    "start": "2025-06",
+    "end": "2025-12",
+    "bullets": [
+      { "id": "a1", "text": "Built SQL pipelines aggregating 12M rows of transaction data into daily reporting tables", "skills": ["sql"] },
+      { "id": "a2", "text": "Automated a weekly Excel report in Python, cutting manual effort from 6 hours to 10 minutes", "skills": ["python", "excel"] },
+      { "id": "a3", "text": "Built Tableau dashboards tracking retention across 4 customer segments", "skills": ["tableau"] },
+      { "id": "a4", "text": "Wrote pandas transformations to clean and deduplicate a 2M-row customer table", "skills": ["python", "pandas"] },
+      { "id": "a5", "text": "Investigated a reporting discrepancy and traced it to a timezone bug in the ETL job", "skills": ["sql"] },
+      { "id": "a6", "text": "Presented weekly findings to a team of 8 including two product managers", "skills": [] },
+      { "id": "a7", "text": "Documented 15 recurring queries into a shared runbook used by the analytics team", "skills": ["sql"] },
+      { "id": "a8", "text": "Added data quality checks that caught 3 upstream schema changes before release", "skills": ["python"] }
+    ]
+  },
+  {
+    "id": "proj-churn",
+    "kind": "project",
+    "org": "Personal Project",
+    "role": "Churn Prediction Model",
+    "start": "2025-01",
+    "end": "2025-04",
+    "bullets": [
+      { "id": "b1", "text": "Trained a gradient boosting churn classifier reaching 0.87 ROC-AUC on held-out data", "skills": ["machine learning", "scikit-learn"] },
+      { "id": "b2", "text": "Engineered 24 behavioural features from raw event logs using pandas", "skills": ["python", "pandas"] },
+      { "id": "b3", "text": "Compared logistic regression, random forest and XGBoost across 5-fold cross-validation", "skills": ["machine learning", "scikit-learn"] },
+      { "id": "b4", "text": "Deployed the model behind a FastAPI endpoint containerised with Docker", "skills": ["python", "docker"] },
+      { "id": "b5", "text": "Wrote a SHAP-based explanation layer surfacing the top 5 drivers per prediction", "skills": ["machine learning"] },
+      { "id": "b6", "text": "Set up MLflow to track 40+ experiment runs and their hyperparameters", "skills": ["machine learning"] },
+      { "id": "b7", "text": "Documented the full pipeline in a README with reproducible setup steps", "skills": ["git"] },
+      { "id": "b8", "text": "Reduced inference latency from 340ms to 45ms by batching feature lookups", "skills": ["python"] }
+    ]
+  }
+]

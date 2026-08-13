@@ -1,0 +1,10 @@
+[
+  {
+    "id": "btech",
+    "institution": "Example Institute of Technology",
+    "degree": "B.Tech, Computer Science",
+    "start": "2021",
+    "end": "2025",
+    "detail": "CGPA 8.4/10"
+  }
+]

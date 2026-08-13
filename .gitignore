@@ -5,4 +5,5 @@ data/*.db
 runs/
 resume/*.json
 !resume/*.example.json
+*.pdf
 .superpowers/

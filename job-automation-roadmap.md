@@ -260,3 +260,6 @@ Staying inside the Gemini free tier is the main thing to watch. At ~25 tailoring
 - **Maintenance:** expect ~2 hours/month fixing broken adapters. This is permanent, not a bug.
 
 One strategic note worth keeping in view: response rate is driven far more by targeting and referrals than by volume. The system's real value is that it makes 20 well-matched applications cost you the effort of zero — not that it lets you fire off 200.
+
+
+U should refer this: https://abhijayvuyyuru.substack.com/p/i-applied-to-0-jobs-last-week-ai 
