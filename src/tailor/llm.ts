@@ -60,7 +60,9 @@ function stripFences(raw: string): string {
 async function callGemini(prompt: string): Promise<string> {
   const apiKey = process.env.GEMINI_API_KEY;
   if (!apiKey) throw new TailorError('GEMINI_API_KEY is not set');
-  const model = process.env.GEMINI_MODEL ?? 'gemini-2.5-flash';
+  // gemini-2.5-flash is listed by ListModels but 404s for keys created after
+  // its retirement, so the default has to be a currently-servable model.
+  const model = process.env.GEMINI_MODEL ?? 'gemini-3.5-flash';
 
   const res = await fetch(
     `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`,
