@@ -9,7 +9,8 @@ experience:
 locations:
   include: [bengaluru,delhi, gurugram, noida, remote]
 freshness:
-  max_posted_age_days: 14       # older postings are never applied to
+  max_posted_age_days: 60       # older postings are never applied to;
+                                # liveness check confirms the posting is still open before submit
   verify_open_before_submit: true
 scoring:
   threshold: 60
