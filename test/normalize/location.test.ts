@@ -36,6 +36,19 @@ describe('normalizeLocation', () => {
     }
   });
 
+  it('treats India-qualified remote as remote', () => {
+    for (const s of ['Remote (India)', 'Remote - Bengaluru', 'India - Remote']) {
+      expect(normalizeLocation(s)).toBe('remote');
+    }
+  });
+
+  it('does NOT treat foreign-qualified remote as our remote', () => {
+    for (const s of ['Remote - United Kingdom', 'Remote, US', 'Remote (US only)', 'Remote - EMEA']) {
+      expect(normalizeLocation(s)).not.toBe('remote');
+      expect(isUnknownLocationToken(s)).toBe(true);
+    }
+  });
+
   it('returns an empty string for null or blank input', () => {
     expect(normalizeLocation(null)).toBe('');
     expect(normalizeLocation('   ')).toBe('');
