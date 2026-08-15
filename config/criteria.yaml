@@ -4,8 +4,8 @@ titles:
              applied scientist, nlp engineer, mlops engineer]
   exclude: [senior,principal,director]
 experience:
-  max_years_required: 0         # reject if the JD's MINIMUM stated years exceeds this;
-                                # "0-2 years" has a minimum of 0 and passes
+  max_years_required: 2         # reject if the JD's MINIMUM stated years exceeds this;
+                                # "0-2 years" / "1-2 years" entry roles pass, "5+ years" does not
 locations:
   include: [bengaluru,delhi, gurugram, noida, remote]
 freshness:
