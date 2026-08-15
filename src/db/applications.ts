@@ -3,6 +3,33 @@ import type { NewApplication } from './types.js';
 
 const OPEN_OUTCOMES = ['awaiting', 'acknowledged', 'screening', 'interview'];
 
+/** One flat row per submitted application, with its job's columns joined in. */
+export interface TrackerApplication {
+  applied_at: string;
+  company: string;
+  title: string;
+  method: string;
+  outcome: string;
+  last_email_at: string | null;
+  location: string | null;
+  source: string;
+  match_score: number | null;
+  url: string;
+  resume_path: string | null;
+}
+
+export function listApplicationsWithJob(db: Database): TrackerApplication[] {
+  return db
+    .prepare(
+      `SELECT a.applied_at, a.company, a.title, a.method, a.outcome, a.last_email_at,
+              j.location, j.source, j.match_score, j.url, j.resume_path
+         FROM applications a
+         JOIN jobs j ON j.id = a.job_id
+        ORDER BY a.applied_at DESC, a.id DESC`,
+    )
+    .all() as TrackerApplication[];
+}
+
 export function insertApplication(db: Database, a: NewApplication): number {
   const info = db
     .prepare(

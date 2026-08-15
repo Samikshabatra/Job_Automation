@@ -35,6 +35,8 @@ import { adapterFor } from '../submit/router.js';
 import type { SubmitPayload } from '../submit/types.js';
 import { isStillOpen as defaultIsStillOpen } from '../submit/liveness.js';
 import { emptyReport, writeReport, formatReport, type RunReport } from './report.js';
+import { writeTracker } from '../track/excel.js';
+import { trackerPath } from './track.js';
 
 const ENTRIES_PER_RESUME = 2;
 const FAILURE_PAUSE_RATIO = 0.3;
@@ -304,5 +306,13 @@ if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) 
   });
   console.log(formatReport(report));
   console.log(`\nReport written to ${writeReport(report)}`);
+
+  // Regenerate the Excel tracker from the DB. Runs on every exit path of
+  // runDaily (including the auto-pause early return) because it sits after the
+  // call returns, not inside it — keeping runDaily itself free of file writes.
+  const tracker = trackerPath();
+  await writeTracker(db, tracker);
+  console.log(`Tracker written to ${tracker}`);
+
   db.close();
 }

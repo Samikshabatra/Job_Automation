@@ -57,6 +57,11 @@ export function listJobsByStatus(db: Database, status: JobStatus): JobRow[] {
     .all(status) as JobRow[];
 }
 
+/** Every job, newest first — the full pipeline snapshot for the Excel tracker. */
+export function listAllJobsForTracker(db: Database): JobRow[] {
+  return db.prepare('SELECT * FROM jobs ORDER BY id DESC').all() as JobRow[];
+}
+
 export function markMissingJobsClosed(db: Database, boardId: number, seenSourceIds: string[]): number {
   const placeholders = seenSourceIds.map(() => '?').join(',') || "''";
   const terminals = TERMINAL.map(() => '?').join(',');

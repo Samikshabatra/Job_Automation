@@ -3,7 +3,7 @@ import type { Database } from 'better-sqlite3';
 import { openDb } from '../../src/db/index.js';
 import {
   insertJob, getJobByFingerprint, updateJobStatus,
-  listJobsByStatus, markMissingJobsClosed,
+  listJobsByStatus, markMissingJobsClosed, listAllJobsForTracker,
 } from '../../src/db/jobs.js';
 import { upsertBoard } from '../../src/db/boards.js';
 
@@ -58,6 +58,18 @@ describe('listJobsByStatus', () => {
     insertJob(db, { ...base, fingerprint: 'b' });
     updateJobStatus(db, a, 'tailored');
     expect(listJobsByStatus(db, 'tailored').map((r) => r.fingerprint)).toEqual(['a']);
+  });
+});
+
+describe('listAllJobsForTracker', () => {
+  it('returns every job regardless of status, newest first', () => {
+    const a = insertJob(db, { ...base, fingerprint: 'a' })!;
+    const b = insertJob(db, { ...base, fingerprint: 'b' })!;
+    updateJobStatus(db, a, 'skipped', 'below threshold');
+    updateJobStatus(db, b, 'tailored');
+    const rows = listAllJobsForTracker(db);
+    expect(rows.map((r) => r.fingerprint)).toEqual(['b', 'a']);
+    expect(rows.map((r) => r.status).sort()).toEqual(['skipped', 'tailored']);
   });
 });
 

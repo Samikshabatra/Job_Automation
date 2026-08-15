@@ -9,7 +9,8 @@
   "scripts": {
     "test": "vitest run",
     "test:watch": "vitest",
-    "daily": "tsx src/run/daily.ts"
+    "daily": "tsx src/run/daily.ts",
+    "track": "tsx src/run/track.ts"
   },
   "keywords": [],
   "author": "",
@@ -18,6 +19,7 @@
   "dependencies": {
     "better-sqlite3": "^13.0.2",
     "dotenv": "^17.4.2",
+    "exceljs": "^4.4.0",
     "yaml": "^2.9.0",
     "zod": "^4.4.3"
   },
