@@ -1,12 +1,14 @@
+// Only the five target locations from config/criteria.yaml. Cities that are
+// not application targets are intentionally absent: a job in an untargeted
+// city normalizes to its raw token and is rejected by the location filter all
+// the same, so listing it here would only add noise. Misspellings seen in
+// live board data (e.g. "Banglore") are folded in so real matches are not
+// missed.
 const ALIASES: Record<string, string[]> = {
-  bengaluru: ['bengaluru', 'bangalore', 'blr'],
+  bengaluru: ['bengaluru', 'bangalore', 'blr', 'banglore', 'bangaluru', 'bengalore'],
   gurugram: ['gurugram', 'gurgaon'],
   delhi: ['delhi', 'new delhi', 'delhi ncr', 'ncr'],
   noida: ['noida', 'greater noida'],
-  hyderabad: ['hyderabad', 'secunderabad'],
-  pune: ['pune'],
-  mumbai: ['mumbai', 'bombay'],
-  chennai: ['chennai', 'madras'],
   remote: ['remote', 'anywhere', 'worldwide', 'work from home', 'wfh', 'remote india', 'fully remote', 'distributed'],
 };
 

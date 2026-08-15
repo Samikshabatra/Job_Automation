@@ -6,6 +6,14 @@ describe('normalizeLocation', () => {
     expect(normalizeLocation('Bangalore, India')).toBe('bengaluru');
     expect(normalizeLocation('BLR')).toBe('bengaluru');
     expect(normalizeLocation('Bengaluru, Karnataka')).toBe('bengaluru');
+    expect(normalizeLocation('Banglore')).toBe('bengaluru');
+  });
+
+  it('does not map untargeted Indian cities to a canonical', () => {
+    for (const s of ['Hyderabad', 'Pune', 'Mumbai', 'Chennai']) {
+      expect(normalizeLocation(s)).toBe(s.toLowerCase());
+      expect(isUnknownLocationToken(s)).toBe(true);
+    }
   });
 
   it('maps Gurgaon to gurugram', () => {
