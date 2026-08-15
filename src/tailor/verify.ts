@@ -3,13 +3,112 @@ import type { TailorResponse } from './llm.js';
 
 const SIMILARITY_FLOOR = 0.6;
 
-function tokens(s: string): Set<string> {
-  return new Set(s.toLowerCase().replace(/[^a-z0-9\s]/g, ' ').split(/\s+/).filter(Boolean));
+/**
+ * Words that carry no claim. Dropping them stops the similarity score from
+ * being spent on grammar: the prompt explicitly invites rewording ("YOU MAY:
+ * reorder bullets, choose which to include, reword for keyword alignment"),
+ * so `using` vs `utilizing` must not count as evidence of fabrication.
+ */
+const STOPWORDS = new Set([
+  'a', 'an', 'the', 'and', 'or', 'of', 'for', 'to', 'in', 'on', 'at', 'by', 'with',
+  'from', 'as', 'that', 'this', 'it', 'its', 'into', 'across', 'via', 'per',
+  'using', 'use', 'used', 'uses', 'utilizing', 'utilising', 'utilize', 'utilise',
+  'including', 'include', 'included',
+  'while', 'which', 'is', 'are', 'was', 'were', 'be', 'been', 'their', 'them',
+]);
+
+/**
+ * en-GB / en-US pairs, listed explicitly. A generic `-ise` → `-ize` rule is
+ * NOT safe: it also rewrites raise, precise, concise, promise, expertise.
+ */
+const SPELLING: Record<string, string> = {
+  modelling: 'modeling', modelled: 'modeled',
+  labelling: 'labeling', labelled: 'labeled',
+  cancelled: 'canceled', travelling: 'traveling',
+  analyse: 'analyze', analysed: 'analyzed', analysing: 'analyzing',
+  optimise: 'optimize', optimised: 'optimized', optimising: 'optimizing',
+  optimisation: 'optimization',
+  organise: 'organize', organised: 'organized', organisation: 'organization',
+  summarise: 'summarize', summarised: 'summarized', summarisation: 'summarization',
+  visualise: 'visualize', visualised: 'visualized', visualisation: 'visualization',
+  normalise: 'normalize', normalised: 'normalized', normalisation: 'normalization',
+  standardise: 'standardize', standardised: 'standardized',
+  prioritise: 'prioritize', prioritised: 'prioritized',
+  categorise: 'categorize', categorised: 'categorized',
+  minimise: 'minimize', minimised: 'minimized',
+  maximise: 'maximize', maximised: 'maximized',
+  utilise: 'utilize', utilised: 'utilized',
+  colour: 'color', behaviour: 'behavior', centre: 'center', programme: 'program',
+};
+
+/** Expanded on BOTH sides, so "ML" and "machine learning" compare as equal. */
+const ABBREVIATIONS: Record<string, string> = {
+  ml: 'machine learning',
+  dl: 'deep learning',
+  nlp: 'natural language processing',
+  ai: 'artificial intelligence',
+  llm: 'large language model',
+  llms: 'large language models',
+  rag: 'retrieval augmented generation',
+  eda: 'exploratory data analysis',
+  etl: 'extract transform load',
+};
+
+/**
+ * Suffixes stripped longest-first. Crude by design — this only has to make
+ * "structure"/"structuring" and "retrieve"/"retrieving" agree, and a stem
+ * match is still a real word match, so it does not loosen the gate. The
+ * trailing bare `e` is what lets an -ing/-ed form meet its base form.
+ */
+const SUFFIXES = [
+  'ational', 'ization', 'isation', 'ations', 'ation', 'ings', 'ing',
+  'edly', 'ions', 'ion', 'ies', 'ed', 'es', 's', 'ly', 'e',
+];
+
+function stem(word: string): string {
+  if (word.length <= 4) return word;
+  for (const suffix of SUFFIXES) {
+    if (!word.endsWith(suffix)) continue;
+    if (word.length - suffix.length < 3) continue;
+    let base = word.slice(0, word.length - suffix.length);
+    // "running" -> "runn" -> "run"
+    if (/([bdfglmnprt])\1$/.test(base)) base = base.slice(0, -1);
+    return base;
+  }
+  return word;
+}
+
+function rawTokens(s: string): string[] {
+  return s.toLowerCase().replace(/[^a-z0-9\s]/g, ' ').split(/\s+/).filter(Boolean);
+}
+
+/** Tokens with spelling, abbreviations and morphology normalized. */
+function normalizedTokens(s: string): string[] {
+  const out: string[] = [];
+  for (const raw of rawTokens(s)) {
+    const spelled = SPELLING[raw] ?? raw;
+    const expanded = ABBREVIATIONS[spelled];
+    if (expanded) out.push(...expanded.split(' ').map(stem));
+    else out.push(stem(spelled));
+  }
+  return out;
+}
+
+/**
+ * Stopwords must be compared in stemmed form too — `normalizedTokens` stems
+ * before this filter runs, so a raw-form set would miss "including" once it
+ * has already become "includ".
+ */
+const STOPWORD_STEMS = new Set([...STOPWORDS].map(stem));
+
+/** Claim-bearing tokens only — what the similarity score is computed over. */
+function contentTokens(s: string): Set<string> {
+  return new Set(normalizedTokens(s).filter((t) => !STOPWORD_STEMS.has(t)));
 }
 
 function jaccard(a: string, b: string): number {
-  const A = tokens(a);
-  const B = tokens(b);
+  const A = contentTokens(a);
+  const B = contentTokens(b);
   if (A.size === 0 || B.size === 0) return 0;
   let intersection = 0;
   for (const t of A) if (B.has(t)) intersection++;
@@ -19,6 +118,30 @@ function jaccard(a: string, b: string): number {
 /** Every number in the text, so an inflated metric can be caught. */
 function numbers(s: string): string[] {
   return (s.match(/\d+(?:\.\d+)?\s*[kmb%]?/gi) ?? []).map((n) => n.toLowerCase().replace(/\s+/g, ''));
+}
+
+/**
+ * Capitalized tokens that do not start a sentence — employers, products and
+ * technologies (Google, TensorFlow, NumPy, Scikit-learn). Sentence-initial
+ * words are skipped because their capital says nothing about what they are.
+ */
+function properNouns(text: string): string[] {
+  const out: string[] = [];
+  // The lookbehind is load-bearing: without it, the "M" inside a metric like
+  // "12M" matches as its own capitalized token and gets reported as an
+  // invented name, failing every bullet that carries a unit-suffixed number.
+  const re = /(?<![A-Za-z0-9])[A-Z][A-Za-z0-9+#.\-]*/g;
+  let m: RegExpExecArray | null;
+
+  while ((m = re.exec(text)) !== null) {
+    const word = m[0].replace(/[.\-+#]+$/, '');
+    if (!word) continue;
+    // Only whitespace between this token and the start of the text, or a
+    // sentence terminator, means it is sentence-initial.
+    if (/(^|[.!?])\s*$/.test(text.slice(0, m.index))) continue;
+    out.push(word);
+  }
+  return out;
 }
 
 export function verifyNoFabrication(
@@ -41,15 +164,51 @@ export function verifyNoFabrication(
         offending.push(`unknown bullet id "${bullet.id}"`);
         continue;
       }
+
       if (jaccard(bullet.text, sourceBullet.text) < SIMILARITY_FLOOR) {
         offending.push(bullet.text);
         continue;
       }
+
       const sourceNumbers = new Set(numbers(sourceBullet.text));
       const invented = numbers(bullet.text).filter((n) => !sourceNumbers.has(n));
       if (invented.length) {
         offending.push(`${bullet.text} (invented figures: ${invented.join(', ')})`);
+        continue;
       }
+
+      // Stopwords are kept here: a proper noun must be traceable to the source
+      // text itself, not merely to its claim-bearing words.
+      const sourceAll = new Set(normalizedTokens(sourceBullet.text));
+      const newNames = properNouns(bullet.text).filter(
+        (name) => !normalizedTokens(name).every((t) => sourceAll.has(t)),
+      );
+      if (newNames.length) {
+        offending.push(`${bullet.text} (invented names: ${[...new Set(newNames)].join(', ')})`);
+      }
+    }
+  }
+
+  // The summary is free text the model writes from scratch, and it is printed
+  // on the resume just like a bullet — but it is synthesized ACROSS entries,
+  // so a per-bullet similarity floor cannot apply. Hold it to the checks that
+  // do transfer: every figure and every name in it must be traceable to the
+  // source material somewhere.
+  if (res.summary.trim()) {
+    const corpus = source.flatMap((e) => e.bullets.map((b) => b.text)).join(' ');
+    const corpusTokens = new Set(normalizedTokens(corpus));
+    const corpusNumbers = new Set(numbers(corpus));
+
+    const inventedFigures = numbers(res.summary).filter((n) => !corpusNumbers.has(n));
+    if (inventedFigures.length) {
+      offending.push(`summary (invented figures: ${inventedFigures.join(', ')})`);
+    }
+
+    const inventedNames = properNouns(res.summary).filter(
+      (name) => !normalizedTokens(name).every((t) => corpusTokens.has(t)),
+    );
+    if (inventedNames.length) {
+      offending.push(`summary (invented names: ${[...new Set(inventedNames)].join(', ')})`);
     }
   }
 
