@@ -282,6 +282,16 @@ export async function runDaily(deps: RunDeps): Promise<RunReport> {
  * `npm run daily` would exit silently having done nothing.
  */
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
+  // `.env` is loaded HERE, not at module top, and only for the real CLI run.
+  // A top-level `import 'dotenv/config'` would also fire whenever a test
+  // imports this module, letting real credentials leak into a suite that is
+  // required to be hermetic and offline.
+  //
+  // Without this, `dotenv` sits in package.json unused and every env-backed
+  // feature fails silently: tailoring dies with "GEMINI_API_KEY is not set"
+  // even when .env defines it, and Adzuna reports missing credentials.
+  await import('dotenv/config');
+
   const db = openDb();
   const report = await runDaily({
     db,

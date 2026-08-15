@@ -1,8 +1,127 @@
-# Add companies you want polled. Edits take effect on the next run.
+# Companies you want polled. Edits take effect on the next run.
 #   - name: Acme Corp        # ats/token resolved automatically
 #   - name: Beta Inc
 #     paused: true           # keep listed, stop applying
 #   - name: Gamma Ltd
 #     ats: lever             # manual override if resolution fails
 #     token: gamma
-companies: []
+#
+# Every entry below has an EXPLICIT ats + token that was probed against the
+# live board and confirmed to belong to the right employer. Pinning them means
+# the resolver never guesses at runtime: `resolveAll` upserts a pinned entry
+# directly, skipping the slug probe entirely.
+#
+# Why that matters — three names resolved to the WRONG company's board during
+# the probe, because the slug generator falls back to the first word:
+#   Tiger Analytics -> ashby/tiger  (4 jobs, San Francisco only — not the
+#                                    Indian analytics firm)
+#   Navi            -> ashby/navi   (8 jobs, San Francisco, "Founding
+#                                    Engineer" roles — not the fintech)
+#   Slice           -> greenhouse/slice (43 jobs, New Jersey / Skopje /
+#                                    Mexico — the US pizza-tech Slice)
+# A wrong-but-live board means applying to an employer you never chose, so
+# never enable an entry you have not opened in a browser yourself.
+
+companies:
+  # ---- India-based / India-heavy ----
+  - name: Zeta
+    ats: lever
+    token: zeta
+  - name: Groww
+    ats: greenhouse
+    token: groww
+  - name: CRED
+    ats: lever
+    token: cred
+  - name: PhonePe
+    ats: greenhouse
+    token: phonepe
+  - name: Meesho
+    ats: lever
+    token: meesho
+  - name: InMobi
+    ats: greenhouse
+    token: inmobi
+  - name: Postman
+    ats: greenhouse
+    token: postman
+  - name: Mindtickle
+    ats: lever
+    token: mindtickle
+  - name: Zenoti
+    ats: greenhouse
+    token: zenoti
+  - name: Turing
+    ats: greenhouse
+    token: turing
+  - name: Observe.AI
+    ats: greenhouse
+    token: observeai
+  - name: HackerRank
+    ats: greenhouse
+    token: hackerrank
+
+  # ---- Global, with India offices or remote-friendly hiring ----
+  - name: Databricks
+    ats: greenhouse
+    token: databricks
+  - name: Snowflake
+    ats: ashby
+    token: snowflake
+  - name: Confluent
+    ats: ashby
+    token: confluent
+  - name: MongoDB
+    ats: greenhouse
+    token: mongodb
+  - name: Elastic
+    ats: greenhouse
+    token: elastic
+  - name: Figma
+    ats: greenhouse
+    token: figma
+  - name: Stripe
+    ats: greenhouse
+    token: stripe
+  - name: Airbnb
+    ats: greenhouse
+    token: airbnb
+  - name: Notion
+    ats: ashby
+    token: notion
+  - name: Vercel
+    ats: greenhouse
+    token: vercel
+  - name: Supabase
+    ats: ashby
+    token: supabase
+  - name: Scale AI
+    ats: greenhouse
+    token: scaleai
+  - name: Cohere
+    ats: ashby
+    token: cohere
+  - name: Perplexity
+    ats: ashby
+    token: perplexity
+  - name: Ramp
+    ats: ashby
+    token: ramp
+
+# ---- Probed and deliberately NOT included ----
+#
+# Resolved to a live board that belongs to a DIFFERENT company (see note
+# above). Do not uncomment without confirming the token in a browser:
+#   Tiger Analytics (ashby/tiger), Navi (ashby/navi), Slice (greenhouse/slice)
+#
+# Resolved but the board returned zero jobs, so the token is stale or wrong:
+#   Freshworks (lever/freshworks), Scaler (ashby/scaler), Deel (ashby/deel)
+#
+# Did not resolve on any of the four ATSes — they use Workday, Darwinbox,
+# SmartRecruiters or their own careers stack. Add by hand if you find a
+# Greenhouse/Lever/Ashby/Workable board for them:
+#   Razorpay, Juspay, Setu, Jupiter Money, Swiggy, Zomato, Dream11, ShareChat,
+#   BrowserStack, Chargebee, Hasura, Innovaccer, MoEngage, CleverTap,
+#   Darwinbox, Whatfix, Sprinklr, Gupshup, Uniphore, Yellow.ai, Netcore Cloud,
+#   Icertis, Fractal Analytics, LatentView Analytics, HackerEarth, Atlassian,
+#   Weights and Biases, Hugging Face
