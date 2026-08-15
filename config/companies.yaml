@@ -60,6 +60,20 @@ companies:
   - name: HackerRank
     ats: greenhouse
     token: hackerrank
+  # ---- Added 2026-08-15: probed live, India-located jobs confirmed ----
+  # devrev  greenhouse  43 jobs (Bangalore, Mumbai, India Remote)
+  # atlan   ashby        5 jobs (India)
+  # sarvam  ashby       62 jobs (Bengaluru, Delhi) — VERIFY in browser it is
+  #                     Sarvam AI: https://jobs.ashbyhq.com/sarvam
+  - name: DevRev
+    ats: greenhouse
+    token: devrev
+  - name: Atlan
+    ats: ashby
+    token: atlan
+  - name: Sarvam AI
+    ats: ashby
+    token: sarvam
 
   # ---- Global, with India offices or remote-friendly hiring ----
   - name: Databricks
