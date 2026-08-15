@@ -5296,6 +5296,59 @@ describe('runDaily', () => {
     expect(d.render).not.toHaveBeenCalled();
     expect(listJobsByStatus(db, 'failed')).toHaveLength(1);
   });
+
+  // Spec §5.5: "`deferred` jobs are automatically reconsidered on the next run".
+  // Seed an unrelated prior application to occupy the single per-company slot,
+  // so the job under test is deferred by the cap rather than held as a
+  // near-duplicate. This pair must be kept together: the first test proves
+  // deferred jobs come back, the second proves the fix did not over-correct
+  // into draining every non-terminal status.
+  it('reconsiders a deferred job on the next run', async () => {
+    const seedId = insertJob(db, {
+      fingerprint: 'seed', boardId: null, source: 'greenhouse', sourceJobId: 'seed',
+      url: 'https://boards.greenhouse.io/acme/jobs/seed', company: 'Acme',
+      title: 'Backend Engineer', normTitle: 'backend engineer',
+      location: 'Remote', normLocation: 'remote', postedAt: null,
+      jdText: null, atsPlatform: 'greenhouse',
+    })!;
+    insertApplication(db, {
+      jobId: seedId, company: 'Acme', title: 'Backend Engineer', method: 'api', emailUsed: null,
+    });
+
+    const capped = { ...criteria, submission: { dry_run: false }, limits: { ...criteria.limits, per_company_open_applications: 1 } };
+    const first = await runDaily(deps({ criteria: capped }));
+    expect(first.outcomes.deferred).toBe(1);
+    expect(first.submitted).toBe(0);
+    expect(listJobsByStatus(db, 'deferred')).toHaveLength(1);
+
+    const roomy = { ...criteria, submission: { dry_run: false } };
+    const d = deps({ criteria: roomy });
+    const second = await runDaily(d);
+    expect(second.submitted).toBe(1);
+    expect(d.submit).toHaveBeenCalledOnce();
+  });
+
+  it('does not reconsider a held job', async () => {
+    const seedId = insertJob(db, {
+      fingerprint: 'seed', boardId: null, source: 'greenhouse', sourceJobId: 'seed',
+      url: 'https://boards.greenhouse.io/acme/jobs/seed', company: 'Acme',
+      title: 'Data Analyst', normTitle: 'data analyst',
+      location: 'Remote', normLocation: 'remote', postedAt: null,
+      jdText: null, atsPlatform: 'greenhouse',
+    })!;
+    insertApplication(db, {
+      jobId: seedId, company: 'Acme', title: 'Data Analyst', method: 'api', emailUsed: null,
+    });
+
+    const live = { ...criteria, submission: { dry_run: false } };
+    const first = await runDaily(deps({ criteria: live }));
+    expect(first.outcomes.held).toBe(1);
+
+    const d = deps({ criteria: live });
+    await runDaily(d);
+    expect(d.submit).not.toHaveBeenCalled();
+    expect(listJobsByStatus(db, 'held')).toHaveLength(1);
+  });
 });
 ```
 
@@ -5306,6 +5359,7 @@ describe('runDaily', () => {
 ```ts
 import { join } from 'node:path';
 import { homedir } from 'node:os';
+import { pathToFileURL } from 'node:url';
 import type { Database } from 'better-sqlite3';
 import type { BlockedCompany, CompanyEntry, Criteria } from '../config/schema.js';
 import { loadBlocklist, loadCompanies, loadCriteria } from '../config/load.js';
@@ -5342,6 +5396,15 @@ import { emptyReport, writeReport, formatReport, type RunReport } from './report
 
 const ENTRIES_PER_RESUME = 2;
 const FAILURE_PAUSE_RATIO = 0.3;
+
+/**
+ * Statuses eligible for the submission stage. Spec §5.5: `deferred` jobs are
+ * automatically reconsidered on the next run (they lost a cap race, not a
+ * judgement), whereas `held` jobs require the user to act and must NOT be
+ * picked up again automatically. Reading only 'tailored' here strands every
+ * job that ever hits the daily or per-company cap — a silent permanent drop.
+ */
+const SUBMITTABLE: JobRow['status'][] = ['tailored', 'deferred'];
 
 export interface RunDeps {
   db: Database;
@@ -5514,7 +5577,9 @@ export async function runDaily(deps: RunDeps): Promise<RunReport> {
 
   // 10. Submit through guards
   let submittedThisRun = 0;
-  for (const job of listJobsByStatus(db, 'tailored')) {
+  const queue = SUBMITTABLE.flatMap((status) => listJobsByStatus(db, status));
+
+  for (const job of queue) {
     const outcome = await runGuards({
       db, job, criteria, blocklist, now,
       projectRoot: deps.projectRoot, submittedThisRun, isStillOpen,
@@ -5556,8 +5621,17 @@ export async function runDaily(deps: RunDeps): Promise<RunReport> {
   return report;
 }
 
-/** CLI entrypoint: `npm run daily` */
-if (import.meta.url === `file://${process.argv[1]?.replace(/\\/g, '/')}`) {
+/**
+ * CLI entrypoint: `npm run daily`.
+ *
+ * `pathToFileURL` is required, not cosmetic: on Windows a hand-built
+ * `file://${argv[1]}` yields `file://C:/Users/Samiksha Batra/...` while
+ * `import.meta.url` is `file:///C:/Users/Samiksha%20Batra/...` — different
+ * slash count AND different space encoding, so the guard would never fire and
+ * `npm run daily` would exit silently having done nothing. Import
+ * `pathToFileURL` from `node:url`.
+ */
+if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
   const db = openDb();
   const report = await runDaily({
     db,
