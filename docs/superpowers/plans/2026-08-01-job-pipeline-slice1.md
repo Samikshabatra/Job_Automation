@@ -5921,11 +5921,18 @@ In the default discovery branch, record each discovery source likewise:
           recordSourceOutcome(db, source.name, result.ok);
 ```
 
-Immediately before `report.finishedAt` is set at the end of `runDaily`:
+Immediately BEFORE the auto-pause block — not at the end of `runDaily`. No
+source is polled after this point, and the auto-pause path returns early, so
+placing it at the end would leave `unhealthySources` empty on exactly the runs
+that gave up. An auto-paused run is when a repeatedly-dead adapter most needs
+to be visible; both exit paths must carry the escalation.
 
 ```ts
   report.unhealthySources = listUnhealthySources(db, UNHEALTHY_AFTER_RUNS)
     .map((s) => ({ source: s.source, consecutiveFailures: s.consecutive_failures }));
+
+  // Auto-pause before submission if the run went badly
+  if (survivors.length > 0 && failures / survivors.length > FAILURE_PAUSE_RATIO) {
 ```
 
 - [ ] **Step 7: Add an orchestrator test**
@@ -5951,6 +5958,35 @@ it('clears the escalation once the board recovers', async () => {
 
   const recovered = await runDaily(deps());
   expect(recovered.unhealthySources).toEqual([]);
+});
+
+// The auto-pause path returns early. A dead adapter is most worth surfacing
+// on exactly the run that gave up, so escalation must survive that return.
+// This test is what pins the placement of the listUnhealthySources call in
+// step 6; move it to the end of runDaily and this goes red.
+it('still reports unhealthy sources when the run auto-pauses on tailoring failures', async () => {
+  const failing = deps({ fetchBoard: async () => ({ ok: false, jobs: [], error: 'HTTP 500' }) });
+  for (let i = 0; i < 3; i++) await runDaily(failing);
+
+  // A job already in the DB survives filters even though the board is down,
+  // so the run reaches the tailoring stage and then auto-pauses.
+  insertJob(db, {
+    fingerprint: 'pending', boardId: null, source: 'greenhouse', sourceJobId: 'pending',
+    url: 'https://boards.greenhouse.io/acme/jobs/pending', company: 'Acme',
+    title: 'Data Analyst', normTitle: 'data analyst',
+    location: 'Bengaluru', normLocation: 'bengaluru',
+    postedAt: '2026-07-31T00:00:00.000Z',
+    jdText: 'Fresher role. SQL required. 0-2 years.', atsPlatform: 'greenhouse',
+  });
+
+  const paused = await runDaily(deps({
+    fetchBoard: async () => ({ ok: false, jobs: [], error: 'HTTP 500' }),
+    callLlm: async () => 'not json at all',
+  }));
+
+  expect(listJobsByStatus(db, 'failed')).toHaveLength(1);
+  expect(paused.sourceFailures.some((f) => f.source === 'pipeline')).toBe(true);
+  expect(paused.unhealthySources[0]).toMatchObject({ source: 'greenhouse:acme' });
 });
 ```
 

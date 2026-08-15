@@ -14,6 +14,7 @@ export interface RunReport {
   submitted: number;
   outcomes: Record<string, number>;
   sourceFailures: { source: string; error: string }[];
+  unhealthySources: { source: string; consecutiveFailures: number }[];
   unresolvedCompanies: string[];
   unknownLocations: string[];
 }
@@ -22,7 +23,8 @@ export function emptyReport(startedAt: string): RunReport {
   return {
     startedAt, finishedAt: '', boardsPolled: 0, discovered: 0, fetched: 0,
     deduped: 0, filtered: {}, scored: 0, tailored: 0, submitted: 0,
-    outcomes: {}, sourceFailures: [], unresolvedCompanies: [], unknownLocations: [],
+    outcomes: {}, sourceFailures: [], unhealthySources: [],
+    unresolvedCompanies: [], unknownLocations: [],
   };
 }
 
@@ -47,6 +49,10 @@ export function formatReport(r: RunReport): string {
     `  submitted     : ${r.submitted}`,
     `  outcomes      : ${outcomes}`,
     section('Source failures:', r.sourceFailures.map((f) => `${f.source}: ${f.error}`)),
+    section(
+      'Sources failing repeatedly — investigate the adapter:',
+      r.unhealthySources.map((s) => `${s.source}: ${s.consecutiveFailures} consecutive failures`),
+    ),
     section('Companies that could not be resolved (add ats/token by hand):', r.unresolvedCompanies),
     section('Unrecognised locations (consider adding to the alias map):', r.unknownLocations),
   ].join('\n');

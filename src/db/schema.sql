@@ -52,3 +52,10 @@ CREATE TABLE IF NOT EXISTS applications (
 );
 
 CREATE INDEX IF NOT EXISTS idx_apps_company ON applications(company);
+
+CREATE TABLE IF NOT EXISTS source_health (
+  source               TEXT PRIMARY KEY,
+  consecutive_failures INTEGER NOT NULL DEFAULT 0,
+  last_ok_at           TEXT,
+  last_error_at        TEXT
+);

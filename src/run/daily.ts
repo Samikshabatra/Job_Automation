@@ -11,6 +11,7 @@ import {
   markSubmitted, setJobResume, setJobScore, updateJobStatus,
 } from '../db/jobs.js';
 import { insertApplication } from '../db/applications.js';
+import { recordSourceOutcome, listUnhealthySources } from '../db/health.js';
 import type { BoardRow, JobRow } from '../db/types.js';
 import { normalizeTitle } from '../normalize/title.js';
 import { normalizeLocation, isUnknownLocationToken } from '../normalize/location.js';
@@ -37,6 +38,7 @@ import { emptyReport, writeReport, formatReport, type RunReport } from './report
 
 const ENTRIES_PER_RESUME = 2;
 const FAILURE_PAUSE_RATIO = 0.3;
+const UNHEALTHY_AFTER_RUNS = 3;
 
 /**
  * Statuses eligible for the submission stage. Spec §5.5: `deferred` jobs are
@@ -94,6 +96,7 @@ export async function runDaily(deps: RunDeps): Promise<RunReport> {
   for (const board of boards) {
     const result = await fetchBoard(board);
     report.boardsPolled++;
+    recordSourceOutcome(db, `${board.ats_platform}:${board.board_token}`, result.ok);
     if (!result.ok) {
       report.sourceFailures.push({ source: `${board.ats_platform}:${board.board_token}`, error: result.error ?? 'unknown' });
       continue;
@@ -114,6 +117,7 @@ export async function runDaily(deps: RunDeps): Promise<RunReport> {
         const failures: { source: string; error: string }[] = [];
         for (const source of ALL_DISCOVERY) {
           const result = await source.search(queries, criteria);
+          recordSourceOutcome(db, source.name, result.ok);
           if (result.ok) hits.push(...result.hits);
           else failures.push({ source: source.name, error: result.error ?? 'unknown' });
         }
@@ -204,6 +208,13 @@ export async function runDaily(deps: RunDeps): Promise<RunReport> {
       failures++;
     }
   }
+
+  // Computed here rather than at the end of the function because no source is
+  // polled after this point, and the auto-pause path below returns early — an
+  // auto-paused run is exactly when a repeatedly-dead adapter most needs to be
+  // visible, so both exit paths must carry the escalation.
+  report.unhealthySources = listUnhealthySources(db, UNHEALTHY_AFTER_RUNS)
+    .map((s) => ({ source: s.source, consecutiveFailures: s.consecutive_failures }));
 
   // Auto-pause before submission if the run went badly
   if (survivors.length > 0 && failures / survivors.length > FAILURE_PAUSE_RATIO) {

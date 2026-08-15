@@ -195,4 +195,51 @@ describe('runDaily', () => {
     expect(d.submit).not.toHaveBeenCalled();
     expect(listJobsByStatus(db, 'held')).toHaveLength(1);
   });
+
+  it('escalates a board that has failed three consecutive runs', async () => {
+    const failing = deps({ fetchBoard: async () => ({ ok: false, jobs: [], error: 'HTTP 500' }) });
+    await runDaily(failing);
+    await runDaily(failing);
+    const third = await runDaily(failing);
+
+    expect(third.unhealthySources).toHaveLength(1);
+    expect(third.unhealthySources[0]).toMatchObject({
+      source: 'greenhouse:acme', consecutiveFailures: 3,
+    });
+  });
+
+  it('clears the escalation once the board recovers', async () => {
+    const failing = deps({ fetchBoard: async () => ({ ok: false, jobs: [], error: 'HTTP 500' }) });
+    for (let i = 0; i < 3; i++) await runDaily(failing);
+
+    const recovered = await runDaily(deps());
+    expect(recovered.unhealthySources).toEqual([]);
+  });
+
+  // The auto-pause path returns early. A dead adapter is most worth surfacing
+  // on exactly the run that gave up, so escalation must survive that return.
+  it('still reports unhealthy sources when the run auto-pauses on tailoring failures', async () => {
+    const failing = deps({ fetchBoard: async () => ({ ok: false, jobs: [], error: 'HTTP 500' }) });
+    for (let i = 0; i < 3; i++) await runDaily(failing);
+
+    // A job already in the DB survives filters even though the board is down,
+    // so the run reaches the tailoring stage and then auto-pauses.
+    insertJob(db, {
+      fingerprint: 'pending', boardId: null, source: 'greenhouse', sourceJobId: 'pending',
+      url: 'https://boards.greenhouse.io/acme/jobs/pending', company: 'Acme',
+      title: 'Data Analyst', normTitle: 'data analyst',
+      location: 'Bengaluru', normLocation: 'bengaluru',
+      postedAt: '2026-07-31T00:00:00.000Z',
+      jdText: 'Fresher role. SQL required. 0-2 years.', atsPlatform: 'greenhouse',
+    });
+
+    const paused = await runDaily(deps({
+      fetchBoard: async () => ({ ok: false, jobs: [], error: 'HTTP 500' }),
+      callLlm: async () => 'not json at all',
+    }));
+
+    expect(listJobsByStatus(db, 'failed')).toHaveLength(1);
+    expect(paused.sourceFailures.some((f) => f.source === 'pipeline')).toBe(true);
+    expect(paused.unhealthySources[0]).toMatchObject({ source: 'greenhouse:acme' });
+  });
 });
