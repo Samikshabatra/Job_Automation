@@ -20,6 +20,7 @@ from dataclasses import dataclass
 from typing import Any, Callable, TypedDict
 
 from langgraph.graph import END, StateGraph
+from langgraph.graph.state import CompiledStateGraph
 
 from apply_agent import browser, db, detect, fieldmap, guards, llm
 from apply_agent.fieldmap import Mapping
@@ -84,7 +85,7 @@ class ApplyState(TypedDict, total=False):
     outcome: str
 
 
-def build_graph(deps: Deps):
+def build_graph(deps: Deps) -> CompiledStateGraph:
     """Wire the apply pipeline into a compiled LangGraph `StateGraph`.
 
     Node bodies are kept thin: each one delegates to the existing,

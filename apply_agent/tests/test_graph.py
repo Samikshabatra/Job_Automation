@@ -13,6 +13,15 @@ def test_decide_routes_to_manual_when_below_threshold():
     assert decide(weak, has_captcha=False, dry_run=False, threshold=0.85) == "manual"
 
 
+def test_decide_routes_to_manual_when_required_field_unmapped():
+    # Confidence is high (0.99), no captcha, not dry_run -- ONLY the
+    # `unmapped` clause can force "manual" here. This isolates that branch
+    # from the confidence-threshold branch (which the below-threshold test
+    # exercises together with unmapped, not on its own).
+    weak = Mapping(values={"email": "x"}, unmapped=["q_custom"], confidence=0.99)
+    assert decide(weak, has_captcha=False, dry_run=False, threshold=0.85) == "manual"
+
+
 def test_decide_routes_to_manual_on_captcha_even_if_confident():
     good = Mapping(values={"email": "x"}, unmapped=[], confidence=0.99)
     assert decide(good, has_captcha=True, dry_run=False, threshold=0.85) == "manual"
