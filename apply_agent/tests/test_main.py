@@ -66,20 +66,25 @@ class _FakeDeps:
     `confidence`/`captcha`/`confirmation` drive the fake form's outcome so a
     test can force a specific `decide`/`verify_submit` branch. `blow_up_on_open`
     lets a test assert that a disallowed job never reaches `open_and_map`
-    (i.e. never "opens a browser") by raising if it's called.
+    (i.e. never "opens a browser") by raising if it's called. `closed_urls`
+    lets a test make a *specific* job's posting look closed (preflight
+    "skipped") while other jobs in the same run stay open, without needing
+    per-job settings.
     """
     confidence: float = 0.95
     captcha: bool = False
     confirmation: bool = True
     open_result: bool = True
+    closed_urls: frozenset = field(default_factory=frozenset)
     blow_up_on_open: bool = False
     opened: list = field(default_factory=list)
     submitted: list = field(default_factory=list)
     screenshots: list = field(default_factory=list)
+    cleaned: list = field(default_factory=list)
     delays: int = 0
 
     def is_open(self, url: str) -> bool:
-        return self.open_result
+        return self.open_result and url not in self.closed_urls
 
     def open_and_map(self, job, profile):
         if self.blow_up_on_open:
@@ -103,6 +108,9 @@ class _FakeDeps:
 
     def delay(self) -> None:
         self.delays += 1
+
+    def cleanup(self, job) -> None:
+        self.cleaned.append(job.id)
 
 
 def _fake_deps(confidence=0.95, captcha=False, confirmation=True, **kw):
@@ -250,3 +258,30 @@ def test_delay_is_called_after_each_processed_job():
     run(conn, settings, _profile(), deps, NOW)
 
     assert deps.delays == 1
+
+
+def test_cleanup_runs_once_per_job_for_manual_and_preflight_blocked():
+    """Resource-leak guard: `deps.cleanup(job)` must run exactly once for
+    EVERY queued job, no matter which branch it took -- including a job
+    that opened a page and got routed to manual (low confidence), and a job
+    that never opened a page at all because the preflight gate blocked it
+    (posting closed). Without this, a real Playwright page would stay open
+    for every non-submitted job until the whole run finishes."""
+    conn = _conn()
+    conn.execute(
+        "INSERT INTO jobs(id,company,title,url,ats_platform,resume_path,status) "
+        "VALUES(2,'Beta','QA','http://beta/apply','lever','/r2.pdf','tailored')"
+    )
+    conn.commit()
+    settings = _settings(dry_run=False, confidence_threshold=0.85)
+    # job 1 (acme) stays open and is confident-but-below-threshold -> manual.
+    # job 2 (beta) is preflight-blocked (posting closed) -> never opened.
+    deps = _fake_deps(confidence=0.5, captcha=False, confirmation=True,
+                       closed_urls={"http://beta/apply"})
+
+    summary = run(conn, settings, _profile(), deps, NOW)
+
+    assert summary.held == 1  # job 1: routed to manual
+    assert summary.skipped == 1  # job 2: preflight-blocked (posting closed)
+    assert deps.opened == [1]  # job 2 never reached open_and_map
+    assert deps.cleaned == [1, 2]  # cleanup ran for every job, blocked one included

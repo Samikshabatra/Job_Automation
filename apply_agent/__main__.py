@@ -65,32 +65,41 @@ def run(conn, settings, profile, deps, now) -> Summary:
     submitted_this_run = count_applied_today(conn, _start_of_day_iso(now))
 
     for job in queued_jobs(conn):
-        pre = preflight(conn, job, settings, submitted_this_run, now, deps.is_open)
-        if not pre.allow:
-            mark_status(conn, job.id, pre.status, pre.reason)
-            if pre.status in _HOLD_STATUSES:
+        # `deps.cleanup(job)` runs exactly once per job, on every branch --
+        # including the preflight-blocked branch (where it's a safe no-op,
+        # since no page was ever opened) -- so a real Playwright page never
+        # stays open past this iteration, no matter which branch we take.
+        try:
+            pre = preflight(conn, job, settings, submitted_this_run, now, deps.is_open)
+            if not pre.allow:
+                mark_status(conn, job.id, pre.status, pre.reason)
+                if pre.status in _HOLD_STATUSES:
+                    s.held += 1
+                else:
+                    s.skipped += 1
+                continue
+
+            form = deps.open_and_map(job, profile)  # -> object with .mapping, .html
+            route = decide(
+                form.mapping, deps.has_captcha(form.html), settings.dry_run, settings.confidence_threshold
+            )
+            if route == "manual":
+                deps.screenshot(job)
+                mark_status(conn, job.id, "held", "manual queue: low confidence / captcha / dry-run")
                 s.held += 1
+                continue
+
+            outcome = verify_submit(deps.submit_and_read(job), deps.is_confirmation)
+            if outcome == "submitted":
+                record_submitted(conn, job, profile.email)
+                s.submitted += 1
+                submitted_this_run += 1
             else:
-                s.skipped += 1
-            continue
-
-        form = deps.open_and_map(job, profile)  # -> object with .mapping, .html
-        route = decide(form.mapping, deps.has_captcha(form.html), settings.dry_run, settings.confidence_threshold)
-        if route == "manual":
-            deps.screenshot(job)
-            mark_status(conn, job.id, "held", "manual queue: low confidence / captcha / dry-run")
-            s.held += 1
-            continue
-
-        outcome = verify_submit(deps.submit_and_read(job), deps.is_confirmation)
-        if outcome == "submitted":
-            record_submitted(conn, job, profile.email)
-            s.submitted += 1
-            submitted_this_run += 1
-        else:
-            mark_status(conn, job.id, "failed", "submit outcome uncertain")
-            s.failed += 1
-        deps.delay()
+                mark_status(conn, job.id, "failed", "submit outcome uncertain")
+                s.failed += 1
+            deps.delay()
+        finally:
+            deps.cleanup(job)
 
     return s
 
@@ -191,6 +200,16 @@ def _build_real_deps(settings, gemini_call):
 
         def delay(self) -> None:
             time.sleep(random.uniform(settings.min_delay, settings.max_delay))
+
+        def cleanup(self, job) -> None:
+            """Close and discard this job's page, if one was ever opened.
+            Called once per job by `run()` regardless of outcome, so pages
+            for manual/failed jobs don't accumulate as open tabs across a
+            real queue. A no-op (no KeyError) for a job that never reached
+            `open_and_map`, e.g. one blocked by the preflight gate."""
+            page = pages.pop(job.id, None)
+            if page is not None:
+                loop.run_until_complete(page.close())
 
     def _close():
         loop.run_until_complete(browser_obj.close())
