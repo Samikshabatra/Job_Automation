@@ -39,6 +39,31 @@ def open_apps_for_company(conn, company: str) -> int:
     ).fetchone()["n"]
 
 
+def already_applied(conn, job) -> bool:
+    """Dedupe gate: True if we've already applied to this job or to any other
+    job sharing its `fingerprint` (a repost with a new id, or a retry).
+
+    Checks the direct `job_id` first, then joins `applications` back to `jobs`
+    on `fingerprint` so a reposted listing (same fingerprint, new row id) is
+    recognized as already-applied and never submitted a second time.
+    """
+    row = conn.execute(
+        "SELECT 1 FROM applications WHERE job_id=? LIMIT 1", (job.id,)
+    ).fetchone()
+    if row is not None:
+        return True
+    fingerprint = getattr(job, "fingerprint", None)
+    if fingerprint:
+        row = conn.execute(
+            "SELECT 1 FROM applications a JOIN jobs j ON a.job_id=j.id "
+            "WHERE j.fingerprint=? LIMIT 1",
+            (fingerprint,),
+        ).fetchone()
+        if row is not None:
+            return True
+    return False
+
+
 def count_applied_today(conn, since_iso: str) -> int:
     return conn.execute(
         "SELECT COUNT(*) n FROM applications WHERE applied_at>=?", (since_iso,)

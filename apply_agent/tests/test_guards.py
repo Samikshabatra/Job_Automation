@@ -11,7 +11,11 @@ def _settings(**kw):
 
 def _conn():
     c = sqlite3.connect(":memory:"); c.row_factory = sqlite3.Row
-    c.executescript("CREATE TABLE applications(id INTEGER PRIMARY KEY, company TEXT, applied_at TEXT, outcome TEXT DEFAULT 'awaiting');")
+    c.executescript(
+        "CREATE TABLE jobs(id INTEGER PRIMARY KEY, fingerprint TEXT, company TEXT, status TEXT);"
+        "CREATE TABLE applications(id INTEGER PRIMARY KEY, job_id INTEGER, company TEXT,"
+        " applied_at TEXT, outcome TEXT DEFAULT 'awaiting');"
+    )
     return c
 
 JOB = Job(1, "Acme", "DA", "http://acme/apply", "greenhouse", "/r.pdf", "fp1")
@@ -32,6 +36,29 @@ def test_holds_when_posting_closed():
 def test_allows_a_clean_job():
     d = preflight(_conn(), JOB, _settings(), 0, NOW, lambda u: True)
     assert d.allow is True
+
+def test_blocks_when_already_applied_to_same_fingerprint():
+    # A repost: a NEW job row (id 2) shares the fingerprint of an already-
+    # submitted job (id 1). Dedupe must block it BEFORE liveness, even though
+    # is_open returns True, so we never apply twice to the same posting.
+    conn = _conn()
+    conn.execute("INSERT INTO jobs(id,fingerprint,company,status) VALUES(1,'fp1','Acme','submitted')")
+    conn.execute("INSERT INTO jobs(id,fingerprint,company,status) VALUES(2,'fp1','Acme','tailored')")
+    conn.execute("INSERT INTO applications(job_id,company,applied_at,outcome) VALUES(1,'Acme','2026-08-15T00:00:00+00:00','awaiting')")
+    conn.commit()
+    repost = Job(2, "Acme", "DA", "http://acme/apply", "greenhouse", "/r.pdf", "fp1")
+    d = preflight(conn, repost, _settings(), 0, NOW, lambda u: True)
+    assert d.allow is False and d.status == "skipped" and "already applied" in d.reason
+
+
+def test_allows_when_fingerprint_not_yet_applied():
+    # Same schema, but no application recorded for this fingerprint -> allowed.
+    conn = _conn()
+    conn.execute("INSERT INTO jobs(id,fingerprint,company,status) VALUES(1,'fp1','Acme','tailored')")
+    conn.commit()
+    d = preflight(conn, JOB, _settings(), 0, NOW, lambda u: True)
+    assert d.allow is True
+
 
 def test_blocks_when_per_company_cap_reached():
     conn = _conn()
