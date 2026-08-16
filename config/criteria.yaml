@@ -13,11 +13,11 @@ freshness:
                                 # liveness check confirms the posting is still open before submit
   verify_open_before_submit: true
 scoring:
-  threshold: 60
+  threshold: 0                  # apply regardless of skill-match score; location/title/experience still gate
 limits:
   daily_cap: 30
   per_company_open_applications: 3
   min_delay_seconds: 45
   max_delay_seconds: 120
 submission:
-  dry_run: true                 # must be flipped manually to go live
+  dry_run: true                 # back to safe: ATS submit adapters return HTTP 400 (not yet live-validated)
