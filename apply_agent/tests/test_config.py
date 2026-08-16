@@ -1,4 +1,6 @@
 # apply_agent/tests/test_config.py
+import yaml
+
 from apply_agent.config import load_settings, load_profile
 
 def test_settings_defaults_new_keys(tmp_path):
@@ -39,3 +41,20 @@ def test_quoted_string_booleans_coerced_safely(tmp_path):
     s2 = load_settings(str(yaml2))
     assert s2.dry_run is True
     assert s2.browser_enabled is True
+
+def test_real_criteria_yaml_has_explicit_new_keys():
+    # load_settings() DEFAULTS browser_enabled/confidence_threshold when
+    # absent, so merely checking the resulting Settings would pass even if
+    # config/criteria.yaml never declared the keys. Task 10 requires the
+    # keys to be LITERALLY PRESENT in the real repo file, so parse the yaml
+    # directly and check the submission block itself.
+    with open("config/criteria.yaml", encoding="utf-8") as f:
+        criteria = yaml.safe_load(f)
+    submission = criteria["submission"]
+    assert "browser_enabled" in submission
+    assert "confidence_threshold" in submission
+    assert submission["dry_run"] is True  # must not be disturbed
+
+    s = load_settings("config/criteria.yaml")
+    assert s.browser_enabled is False
+    assert s.confidence_threshold == 0.85

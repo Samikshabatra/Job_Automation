@@ -21,3 +21,5 @@ limits:
   max_delay_seconds: 120
 submission:
   dry_run: true                 # back to safe: ATS submit adapters return HTTP 400 (not yet live-validated)
+  browser_enabled: false        # kill switch for live browser-driven submission
+  confidence_threshold: 0.85    # minimum field-mapping confidence required before submit
