@@ -22,3 +22,17 @@ def test_maps_via_injected_call():
 def test_bad_json_returns_empty_never_raises():
     fields = [Field(name="q", label="Q", id="", aria="", kind="text", required=True)]
     assert map_unmapped(fields, PROF, lambda p: "not json") == {}
+
+
+def test_valid_json_non_object_returns_empty_never_raises():
+    fields = [Field(name="q", label="Q", id="", aria="", kind="text", required=True)]
+    # Valid JSON, but not an object -> .items() would raise AttributeError if uncaught.
+    assert map_unmapped(fields, PROF, lambda p: "[1, 2, 3]") == {}
+    assert map_unmapped(fields, PROF, lambda p: '"hello"') == {}
+
+
+def test_empty_fields_returns_empty_without_calling():
+    def boom(prompt):
+        raise AssertionError("call must not run when there are no fields")
+
+    assert map_unmapped([], PROF, boom) == {}
