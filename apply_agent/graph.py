@@ -8,11 +8,14 @@ and whether a submission is confirmed or treated as failed. They are plain
 functions with no dependencies so they can be unit-tested directly.
 
 `build_graph(deps)` wires those functions into a `StateGraph` alongside the
-rest of the pipeline (load_job -> preflight -> open_page -> classify_form ->
-map_fields -> fill -> check_blockers -> decide -> {submit | manual} ->
-record -> delay). All I/O (browser, LLM, db, guards) is reached only through
+rest of the pipeline (load_job -> preflight -> {open_page ... | blocked} ->
+... -> decide -> {submit | manual} -> record -> delay). Preflight branches:
+a disallowed job routes straight to `blocked` and END, so it NEVER opens a
+page or submits. All I/O (browser, LLM, db, guards) is reached only through
 the injected `Deps`, so the graph can be built and unit-tested without a
-live browser.
+live browser. The synchronous `run()` in `__main__.py` -- not this compiled
+graph -- is the real, safety-critical orchestrator; this graph is kept
+gate-faithful to it.
 """
 from __future__ import annotations
 
@@ -121,8 +124,7 @@ def build_graph(deps: Deps) -> CompiledStateGraph:
         if mapping.unmapped and deps.llm_call is not None:
             remaining = [f for f in fields if f.name in mapping.unmapped]
             extra = llm.map_unmapped(remaining, deps.profile, deps.llm_call)
-            mapping.values.update(extra)
-            mapping.unmapped = [name for name in mapping.unmapped if name not in extra]
+            fieldmap.merge_llm_mapping(mapping, fields, extra)
         return {"fields": fields, "mapping": mapping}
 
     async def fill(state: ApplyState) -> dict:
@@ -142,6 +144,23 @@ def build_graph(deps: Deps) -> CompiledStateGraph:
     def route_decision(state: ApplyState) -> str:
         return state["route"]
 
+    def gate_after_preflight(state: ApplyState) -> str:
+        # SAFETY GATE: if preflight disallowed the job (kill-switch off, cap
+        # reached, dedupe, posting closed) the graph must END here and NEVER
+        # reach open_page/submit. Without this branch the unconditional
+        # preflight -> open_page edge would open a browser (and could submit)
+        # even when browser_enabled is false. run() in __main__.py is the real
+        # orchestrator; this compiled graph is kept gate-faithful to it.
+        return "open_page" if state.get("allow") else "blocked"
+
+    async def blocked(state: ApplyState) -> dict:
+        # Terminal preflight write, mirroring run(): "deferred"/"skipped" are
+        # written; the transient kill-switch status "disabled" is left alone so
+        # the job stays queued for a later run.
+        if state.get("status") not in (None, "disabled"):
+            db.mark_status(deps.conn, state["job"].id, state["status"], state.get("reason", ""))
+        return {}
+
     async def submit(state: ApplyState) -> dict:
         await browser.submit_form(state["page"])
         html = await state["page"].content()
@@ -153,10 +172,14 @@ def build_graph(deps: Deps) -> CompiledStateGraph:
 
     async def record(state: ApplyState) -> dict:
         job = state["job"]
-        if state.get("outcome") == "submitted":
+        outcome = state.get("outcome", "manual")
+        if outcome == "submitted":
             db.record_submitted(deps.conn, job, deps.profile.email)
+        elif outcome == "manual":
+            db.mark_status(deps.conn, job.id, "held", "manual queue")
         else:
-            db.mark_status(deps.conn, job.id, "held", state.get("outcome", "manual"))
+            # Reconcile with run(): an uncertain submit is "failed", not "held".
+            db.mark_status(deps.conn, job.id, "failed", "submit outcome uncertain")
         return {}
 
     async def delay(state: ApplyState) -> dict:
@@ -174,12 +197,16 @@ def build_graph(deps: Deps) -> CompiledStateGraph:
     graph.add_node("decide", decide_node)
     graph.add_node("submit", submit)
     graph.add_node("manual", manual)
+    graph.add_node("blocked", blocked)
     graph.add_node("record", record)
     graph.add_node("delay", delay)
 
     graph.set_entry_point("load_job")
     graph.add_edge("load_job", "preflight")
-    graph.add_edge("preflight", "open_page")
+    graph.add_conditional_edges(
+        "preflight", gate_after_preflight, {"open_page": "open_page", "blocked": "blocked"}
+    )
+    graph.add_edge("blocked", END)
     graph.add_edge("open_page", "classify_form")
     graph.add_edge("classify_form", "map_fields")
     graph.add_edge("map_fields", "fill")
