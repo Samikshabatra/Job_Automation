@@ -56,3 +56,21 @@ def map_fields(fields, profile) -> Mapping:
     total = len(fields) or 1
     confidence = matched / total
     return Mapping(values, unmapped, confidence)
+
+
+def merge_llm_mapping(mapping: Mapping, fields, extra: dict) -> Mapping:
+    """Fold an LLM `map_unmapped` result back into a heuristic `Mapping`.
+
+    Merges `extra` into `mapping.values`, drops the now-filled names from
+    `mapping.unmapped`, and RECOMPUTES `mapping.confidence` as the share of
+    fields that now carry a value: `filled / total`, capped at 1.0. Without
+    this re-blend a form the heuristic scored 0.4 stays 0.4 even after the LLM
+    maps every field, so `decide` would route a fully-mapped form to manual
+    and defeat the fallback. Mutates and returns `mapping`.
+    """
+    mapping.values.update(extra)
+    mapping.unmapped = [name for name in mapping.unmapped if name not in extra]
+    total = len(fields) or 1
+    filled = sum(1 for f in fields if f.name in mapping.values)
+    mapping.confidence = min(1.0, filled / total)
+    return mapping
