@@ -32,3 +32,13 @@ def test_holds_when_posting_closed():
 def test_allows_a_clean_job():
     d = preflight(_conn(), JOB, _settings(), 0, NOW, lambda u: True)
     assert d.allow is True
+
+def test_blocks_when_per_company_cap_reached():
+    conn = _conn()
+    settings = _settings(per_company_cap=2)
+    conn.executemany(
+        "INSERT INTO applications(company, applied_at, outcome) VALUES (?,?,?)",
+        [(JOB.company, "2026-08-01T00:00:00+00:00", "awaiting")] * settings.per_company_cap,
+    )
+    d = preflight(conn, JOB, settings, 0, NOW, lambda u: True)
+    assert d.allow is False and d.status == "deferred"
