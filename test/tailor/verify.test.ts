@@ -137,6 +137,62 @@ describe('verifyNoFabrication', () => {
     });
   });
 
+  // A skill the candidate genuinely holds is not a fabrication just because
+  // the ONE source bullet being reworded did not spell it out. The allow-set
+  // is the whole resume: every bullet's text, every bullet's declared skills,
+  // and the canonical skills list.
+  describe('skills as the fabrication authority', () => {
+    const src: ExperienceEntry[] = [{
+      id: 'e1', kind: 'internship', org: 'Acme', role: 'AI Intern',
+      start: '2025-01', end: '2025-05',
+      bullets: [{
+        id: 'a1',
+        text: 'Working across vector and relational databases to structure, retrieve, and ground LLM outputs, improving response accuracy and consistency',
+        skills: ['vector databases', 'sql', 'rag', 'llm'],
+      }],
+    }];
+
+    it('accepts a skill surfaced from the bullet own declared skills', () => {
+      const res = {
+        entries: [{ id: 'e1', bullets: [{ id: 'a1', text: 'Working across SQL and vector databases to structure, retrieve, and ground LLM outputs, improving response accuracy and consistency' }] }],
+        summary: '',
+      };
+      expect(verifyNoFabrication(res, src)).toEqual({ ok: true, offending: [] });
+    });
+
+    it('accepts a skill surfaced from the canonical skills list', () => {
+      // ETL lives only in skills.json, not in any bullet text or bullet skills.
+      const withEtl = {
+        entries: [{ id: 'e1', bullets: [{ id: 'a1', text: 'Managed ETL across SQL and vector databases to structure, retrieve, and ground LLM outputs, improving response accuracy' }] }],
+        summary: '',
+      };
+      expect(verifyNoFabrication(withEtl, src, ['etl', 'sql', 'rag', 'llm']).ok).toBe(true);
+    });
+
+    it('accepts a word drawn from the candidate own role or employer', () => {
+      const withRole: ExperienceEntry[] = [{
+        id: 'e1', kind: 'internship', org: 'Alliedworks', role: 'AI Developer Intern',
+        start: '2025-01', end: '2025-05',
+        bullets: [{ id: 'a1', text: 'Working across vector and relational databases to structure and ground LLM outputs', skills: ['sql', 'llm'] }],
+      }];
+      const res = {
+        entries: [{ id: 'e1', bullets: [{ id: 'a1', text: withRole[0].bullets[0].text }] }],
+        summary: 'Developer at Alliedworks experienced with LLM grounding.',
+      };
+      expect(verifyNoFabrication(res, withRole).ok).toBe(true);
+    });
+
+    it('still rejects a technology in neither the resume nor the skills list', () => {
+      const res = {
+        entries: [{ id: 'e1', bullets: [{ id: 'a1', text: 'Working across TensorFlow and vector databases to structure, retrieve, and ground LLM outputs, improving response accuracy and consistency' }] }],
+        summary: '',
+      };
+      const v = verifyNoFabrication(res, src, ['sql', 'rag', 'llm']);
+      expect(v.ok).toBe(false);
+      expect(v.offending[0]).toContain('TensorFlow');
+    });
+  });
+
   // The summary is printed on the resume exactly like a bullet, but it is
   // written from scratch and synthesized across entries, so it was previously
   // checked by nothing at all.

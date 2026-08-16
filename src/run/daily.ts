@@ -191,7 +191,7 @@ export async function runDaily(deps: RunDeps): Promise<RunReport> {
         { call: deps.callLlm },
       );
 
-      const check = verifyNoFabrication(tailored, resume.experience);
+      const check = verifyNoFabrication(tailored, resume.experience, Object.keys(resume.skills));
       if (!check.ok) {
         updateJobStatus(db, job.id, 'failed', `fabrication check failed: ${check.offending.join(' | ')}`);
         failures++;

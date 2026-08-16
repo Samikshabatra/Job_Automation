@@ -145,10 +145,26 @@ function properNouns(text: string): string[] {
 }
 
 export function verifyNoFabrication(
-  res: TailorResponse, source: ExperienceEntry[],
+  res: TailorResponse, source: ExperienceEntry[], skills: string[] = [],
 ): { ok: boolean; offending: string[] } {
   const entryById = new Map(source.map((e) => [e.id, e]));
   const offending: string[] = [];
+
+  // A name is "invented" only when it appears NOWHERE the candidate has
+  // declared it: not in any bullet's text, not in any bullet's `skills`, and
+  // not in the canonical skills list (skills.json). Tailoring reorders and
+  // rewords bullets, so surfacing "SQL" in a bullet whose source text said
+  // "relational databases" — but whose declared skills include sql — is
+  // faithful, not fabrication. The per-bullet similarity and number checks
+  // below stay per-bullet, so this only widens the allow-set for names.
+  const allowedNames = new Set(
+    normalizedTokens(
+      source
+        .flatMap((e) => [e.role, e.org, ...e.bullets.flatMap((b) => [b.text, ...(b.skills ?? [])])])
+        .concat(skills)
+        .join(' '),
+    ),
+  );
 
   for (const entry of res.entries) {
     const sourceEntry = entryById.get(entry.id);
@@ -177,11 +193,10 @@ export function verifyNoFabrication(
         continue;
       }
 
-      // Stopwords are kept here: a proper noun must be traceable to the source
-      // text itself, not merely to its claim-bearing words.
-      const sourceAll = new Set(normalizedTokens(sourceBullet.text));
+      // A proper noun must be traceable to something the candidate declared —
+      // any bullet's text or skills, or the canonical skills list.
       const newNames = properNouns(bullet.text).filter(
-        (name) => !normalizedTokens(name).every((t) => sourceAll.has(t)),
+        (name) => !normalizedTokens(name).every((t) => allowedNames.has(t)),
       );
       if (newNames.length) {
         offending.push(`${bullet.text} (invented names: ${[...new Set(newNames)].join(', ')})`);
@@ -196,7 +211,6 @@ export function verifyNoFabrication(
   // source material somewhere.
   if (res.summary.trim()) {
     const corpus = source.flatMap((e) => e.bullets.map((b) => b.text)).join(' ');
-    const corpusTokens = new Set(normalizedTokens(corpus));
     const corpusNumbers = new Set(numbers(corpus));
 
     const inventedFigures = numbers(res.summary).filter((n) => !corpusNumbers.has(n));
@@ -204,8 +218,9 @@ export function verifyNoFabrication(
       offending.push(`summary (invented figures: ${inventedFigures.join(', ')})`);
     }
 
+    // Same name allow-set as the bullets: text + declared skills + skills.json.
     const inventedNames = properNouns(res.summary).filter(
-      (name) => !normalizedTokens(name).every((t) => corpusTokens.has(t)),
+      (name) => !normalizedTokens(name).every((t) => allowedNames.has(t)),
     );
     if (inventedNames.length) {
       offending.push(`summary (invented names: ${[...new Set(inventedNames)].join(', ')})`);
