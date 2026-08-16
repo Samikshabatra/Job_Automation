@@ -1,0 +1,23 @@
+# apply_agent/tests/test_fieldmap.py
+from apply_agent.config import Profile
+from apply_agent.fieldmap import Field, map_fields
+
+PROF = Profile("Samiksha Batra", "me@x.com", "999", "http://li/x")
+
+def test_maps_obvious_contact_fields_with_high_confidence():
+    fields = [
+        Field(name="first_name", label="First Name", id="", aria="", kind="text", required=True),
+        Field(name="last_name", label="Last Name", id="", aria="", kind="text", required=True),
+        Field(name="email", label="Email", id="", aria="", kind="email", required=True),
+    ]
+    m = map_fields(fields, PROF)
+    assert m.values["first_name"] == "Samiksha" and m.values["email"] == "me@x.com"
+    assert m.unmapped == [] and m.confidence >= 0.85
+
+def test_reports_unmapped_required_field_and_lowers_confidence():
+    fields = [
+        Field(name="email", label="Email", id="", aria="", kind="email", required=True),
+        Field(name="q_custom", label="Why do you want this role?", id="", aria="", kind="textarea", required=True),
+    ]
+    m = map_fields(fields, PROF)
+    assert "q_custom" in m.unmapped and m.confidence < 0.85

@@ -1,0 +1,50 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Apply for Software Engineer - Acme Corp</title>
+</head>
+<body>
+  <main>
+    <h1>Apply for Software Engineer</h1>
+    <form id="application_form" action="#" method="post">
+      <section class="application-question">
+        <label for="first_name">First Name</label>
+        <input type="text" name="first_name" id="first_name" aria-label="First Name" required>
+      </section>
+
+      <section class="application-question">
+        <label for="last_name">Last Name</label>
+        <input type="text" name="last_name" id="last_name" aria-label="Last Name" required>
+      </section>
+
+      <section class="application-question">
+        <label for="email">Email</label>
+        <input type="email" name="email" id="email" aria-label="Email" required>
+      </section>
+
+      <section class="application-question">
+        <label for="phone">Phone</label>
+        <input type="tel" name="phone" id="phone" aria-label="Phone" required>
+      </section>
+
+      <section class="application-question">
+        <label for="linkedin">LinkedIn Profile</label>
+        <input type="url" name="linkedin" id="linkedin" aria-label="LinkedIn Profile">
+      </section>
+
+      <section class="application-question">
+        <label for="resume">Resume/CV</label>
+        <input type="file" name="resume" id="resume" aria-label="Resume/CV" accept=".pdf,.doc,.docx" required>
+      </section>
+
+      <section class="application-question">
+        <label for="cover_letter">Cover Letter</label>
+        <input type="file" name="cover_letter" id="cover_letter" aria-label="Cover Letter" accept=".pdf,.doc,.docx">
+      </section>
+
+      <button type="submit">Submit Application</button>
+    </form>
+  </main>
+</body>
+</html>
