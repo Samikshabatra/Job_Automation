@@ -19,3 +19,23 @@ def test_profile_reads_contact(tmp_path):
     p.write_text('{"name":"Samiksha Batra","email":"a@b.com","phone":"123","links":{"linkedin":"http://li/x"}}')
     prof = load_profile(str(p))
     assert prof.name == "Samiksha Batra" and prof.linkedin == "http://li/x"
+
+def test_quoted_string_booleans_coerced_safely(tmp_path):
+    # Quoted "false"/"true" in YAML must not be truthy-coerced by bare bool().
+    # browser_enabled is the live-submit kill switch; a quoted "false" that
+    # silently evaluates True would enable live job submission unintentionally.
+    yaml = tmp_path / "criteria.yaml"
+    yaml.write_text(
+        'submission:\n  dry_run: "false"\n  browser_enabled: "false"\n'
+    )
+    s = load_settings(str(yaml))
+    assert s.dry_run is False
+    assert s.browser_enabled is False
+
+    yaml2 = tmp_path / "criteria2.yaml"
+    yaml2.write_text(
+        'submission:\n  dry_run: "true"\n  browser_enabled: "yes"\n'
+    )
+    s2 = load_settings(str(yaml2))
+    assert s2.dry_run is True
+    assert s2.browser_enabled is True
