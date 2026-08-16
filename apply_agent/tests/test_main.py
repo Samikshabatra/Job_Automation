@@ -77,6 +77,7 @@ class _FakeDeps:
     open_result: bool = True
     closed_urls: frozenset = field(default_factory=frozenset)
     blow_up_on_open: bool = False
+    raise_on_open: frozenset = field(default_factory=frozenset)
     opened: list = field(default_factory=list)
     submitted: list = field(default_factory=list)
     screenshots: list = field(default_factory=list)
@@ -89,6 +90,10 @@ class _FakeDeps:
     def open_and_map(self, job, profile):
         if self.blow_up_on_open:
             raise AssertionError("open_and_map must not be called for a disallowed job")
+        if job.id in self.raise_on_open:
+            # Simulate a Playwright/LLM/db explosion for ONE job; run() must
+            # isolate it (mark failed) and keep processing the rest (F2).
+            raise RuntimeError(f"boom while mapping job {job.id}")
         self.opened.append(job.id)
         mapping = Mapping(values={"email": profile.email}, unmapped=[], confidence=self.confidence)
         return _FakeForm(mapping, "<form>fake form</form>")
@@ -130,6 +135,10 @@ def test_dry_run_holds_without_submitting():
     summary = run(conn, s, prof, deps, datetime(2026, 8, 16, tzinfo=timezone.utc))
     assert summary.submitted == 0 and summary.held == 1
     assert conn.execute("SELECT COUNT(*) n FROM applications").fetchone()["n"] == 0
+    # F1: dry-run must NOT drain the queue -- the job stays 'tailored' (queued)
+    # so flipping to live later re-attempts it. It must NOT be written to 'held'.
+    job = conn.execute("SELECT status FROM jobs WHERE id=1").fetchone()
+    assert job["status"] == "tailored"
 
 
 def test_confident_confirmed_job_submits_exactly_once():
@@ -195,9 +204,11 @@ def test_captcha_routes_to_manual_even_when_confident():
 
 
 def test_disallowed_job_never_opens_browser_or_submits():
-    """The preflight gate: when browser submission is disabled, `run` must
-    call `mark_status` and move on WITHOUT ever calling `deps.open_and_map`
-    (i.e. without opening a browser) or `deps.submit_and_read`."""
+    """The preflight kill-switch: when browser submission is disabled, `run`
+    must move on WITHOUT ever calling `deps.open_and_map` (i.e. without opening
+    a browser) or `deps.submit_and_read`. F1: it must ALSO leave jobs.status
+    untouched ('tailored', still queued) so enabling the browser later
+    resubmits the queue -- the kill-switch must not drain it to a dead status."""
     conn = _conn()
     settings = _settings(browser_enabled=False)
     deps = _fake_deps(blow_up_on_open=True)
@@ -205,13 +216,13 @@ def test_disallowed_job_never_opens_browser_or_submits():
     summary = run(conn, settings, _profile(), deps, NOW)
 
     assert summary.submitted == 0
-    assert summary.held == 1  # preflight status "held" -> counted as held
+    assert summary.held == 1  # transient skip still counted as held in Summary
     assert deps.opened == []
     assert deps.submitted == []
     assert conn.execute("SELECT COUNT(*) n FROM applications").fetchone()["n"] == 0
     job = conn.execute("SELECT status, status_reason FROM jobs WHERE id=1").fetchone()
-    assert job["status"] == "held"
-    assert "disabled" in job["status_reason"]
+    assert job["status"] == "tailored"  # left queued, NOT written to 'held'
+    assert job["status_reason"] is None  # no terminal status write happened
 
 
 def test_posting_closed_is_skipped_without_opening_browser():
@@ -285,3 +296,59 @@ def test_cleanup_runs_once_per_job_for_manual_and_preflight_blocked():
     assert summary.skipped == 1  # job 2: preflight-blocked (posting closed)
     assert deps.opened == [1]  # job 2 never reached open_and_map
     assert deps.cleaned == [1, 2]  # cleanup ran for every job, blocked one included
+
+
+def test_one_job_erroring_does_not_abort_the_batch():
+    """F2: a Playwright/LLM/db explosion on one job must NOT abort the run.
+    The failing job is marked 'failed' and the OTHER jobs still process; no
+    exception escapes `run()`."""
+    conn = _conn()
+    conn.execute(
+        "INSERT INTO jobs(id,company,title,url,ats_platform,resume_path,status) "
+        "VALUES(2,'Beta','QA','http://beta/apply','lever','/r2.pdf','tailored')"
+    )
+    conn.commit()
+    settings = _settings(dry_run=False)
+    # job 1 (acme) blows up in open_and_map; job 2 (beta) is a clean happy path.
+    deps = _fake_deps(confidence=0.95, captcha=False, confirmation=True,
+                      raise_on_open=frozenset({1}))
+
+    summary = run(conn, settings, _profile(), deps, NOW)  # must NOT raise
+
+    assert summary.failed == 1 and summary.submitted == 1
+    job1 = conn.execute("SELECT status, status_reason FROM jobs WHERE id=1").fetchone()
+    assert job1["status"] == "failed" and "boom" in job1["status_reason"]
+    job2 = conn.execute("SELECT status FROM jobs WHERE id=2").fetchone()
+    assert job2["status"] == "submitted"  # the other job still processed
+    assert deps.submitted == [2]  # only the healthy job reached submit
+    assert deps.cleaned == [1, 2]  # cleanup still ran for both, error included
+    assert conn.execute("SELECT job_id FROM applications").fetchone()["job_id"] == 2
+
+
+def test_already_applied_fingerprint_is_skipped_not_submitted():
+    """F3 dedupe: a repost (new job id, same fingerprint as an already-recorded
+    application) must be skipped by preflight and never re-submitted."""
+    conn = _conn()
+    # Job 1 already has a recorded application under fingerprint 'fp-dupe'.
+    conn.execute("UPDATE jobs SET fingerprint='fp-dupe', status='submitted' WHERE id=1")
+    conn.execute(
+        "INSERT INTO applications(job_id,company,title,applied_at,method,email_used) "
+        "VALUES(1,'Acme','DA','2026-08-15T00:00:00+00:00','agent','me@x.com')"
+    )
+    # Job 2 is a repost of the same posting: new id, SAME fingerprint, queued.
+    conn.execute(
+        "INSERT INTO jobs(id,fingerprint,company,title,url,ats_platform,resume_path,status) "
+        "VALUES(2,'fp-dupe','Acme','DA','http://acme/apply2','greenhouse','/r.pdf','tailored')"
+    )
+    conn.commit()
+    settings = _settings(dry_run=False)
+    deps = _fake_deps(blow_up_on_open=True)  # must never open the dupe's form
+
+    summary = run(conn, settings, _profile(), deps, NOW)
+
+    assert summary.submitted == 0 and summary.skipped == 1
+    assert deps.opened == []  # dedupe blocked before opening a browser
+    # Still exactly one application row (the original), no second submit.
+    assert conn.execute("SELECT COUNT(*) n FROM applications").fetchone()["n"] == 1
+    job2 = conn.execute("SELECT status, status_reason FROM jobs WHERE id=2").fetchone()
+    assert job2["status"] == "skipped" and "already applied" in job2["status_reason"]

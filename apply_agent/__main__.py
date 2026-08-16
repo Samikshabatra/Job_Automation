@@ -39,8 +39,13 @@ from apply_agent.graph import decide, verify_submit
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 
-# preflight.status values that mean "held for later" vs. "skipped outright".
+# preflight.status values that count as "held" (vs. "skipped") in the Summary.
 _HOLD_STATUSES = {"held", "deferred"}
+# Transient preflight skips: the job's jobs.status is LEFT UNCHANGED (it stays
+# queued, 'tailored'/'deferred') so a later run re-attempts it. The kill-switch
+# (browser_enabled false) uses this so "dry-run first, then flip to live" and
+# "held while disabled, submit once enabled" are repeatable, not queue-draining.
+_TRANSIENT_STATUSES = {"disabled"}
 
 
 @dataclass
@@ -72,6 +77,12 @@ def run(conn, settings, profile, deps, now) -> Summary:
         try:
             pre = preflight(conn, job, settings, submitted_this_run, now, deps.is_open)
             if not pre.allow:
+                if pre.status in _TRANSIENT_STATUSES:
+                    # Transient skip (kill-switch): do NOT write jobs.status --
+                    # leave the job queued so a later run picks it up. Still
+                    # count it in the Summary so the operator sees it was held.
+                    s.held += 1
+                    continue
                 mark_status(conn, job.id, pre.status, pre.reason)
                 if pre.status in _HOLD_STATUSES:
                     s.held += 1
@@ -85,7 +96,13 @@ def run(conn, settings, profile, deps, now) -> Summary:
             )
             if route == "manual":
                 deps.screenshot(job)
-                mark_status(conn, job.id, "held", "manual queue: low confidence / captcha / dry-run")
+                if settings.dry_run:
+                    # Dry-run is a transient skip too: preview/fill the form and
+                    # screenshot it, but leave jobs.status queued so flipping to
+                    # live later re-attempts it. No terminal status write.
+                    s.held += 1
+                    continue
+                mark_status(conn, job.id, "held", "manual queue: low confidence / captcha")
                 s.held += 1
                 continue
 
@@ -98,6 +115,14 @@ def run(conn, settings, profile, deps, now) -> Summary:
                 mark_status(conn, job.id, "failed", "submit outcome uncertain")
                 s.failed += 1
             deps.delay()
+        except Exception as exc:
+            # Isolate per-job failures: any error in open/map/submit/db for one
+            # job must not abort the batch. Mark it failed (a terminal status --
+            # NOT re-queued, so a job that errored after a real submit click is
+            # never retried into a double-submit) and move on to the next job.
+            mark_status(conn, job.id, "failed", f"unhandled error: {exc}")
+            s.failed += 1
+            continue
         finally:
             deps.cleanup(job)
 
@@ -130,7 +155,7 @@ def _gemini_call(prompt: str) -> str:
     import google.generativeai as genai
 
     genai.configure(api_key=os.environ.get("GEMINI_API_KEY", ""))
-    model = genai.GenerativeModel(os.environ.get("GEMINI_MODEL", "gemini-3.5-flash"))
+    model = genai.GenerativeModel(os.environ.get("GEMINI_MODEL", "gemini-2.5-flash"))
     response = model.generate_content(prompt)
     return response.text
 
@@ -173,8 +198,9 @@ def _build_real_deps(settings, gemini_call):
             if mapping.unmapped:
                 remaining = [f for f in fields if f.name in mapping.unmapped]
                 extra = llm_mod.map_unmapped(remaining, profile, gemini_call)
-                mapping.values.update(extra)
-                mapping.unmapped = [name for name in mapping.unmapped if name not in extra]
+                # Re-blend confidence so a form the heuristic scored low but the
+                # LLM then fully mapped is no longer routed to manual (F4).
+                fieldmap.merge_llm_mapping(mapping, fields, extra)
             loop.run_until_complete(browser_mod.fill_form(page, mapping.values, job.resume_path))
             html = loop.run_until_complete(page.content())
             return SimpleNamespace(mapping=mapping, html=html)
@@ -242,7 +268,12 @@ def main() -> None:
         f"failed={summary.failed} skipped={summary.skipped}"
     )
 
-    subprocess.run(["npm", "run", "track"], cwd=str(REPO_ROOT))
+    # On Windows `npm` is `npm.cmd`, not a bare executable on PATH, so a plain
+    # list-form subprocess.run raises FileNotFoundError. shell=True lets the
+    # shell resolve the .cmd shim. Log a non-zero exit rather than swallowing it.
+    result = subprocess.run("npm run track", cwd=str(REPO_ROOT), shell=True)
+    if result.returncode != 0:
+        print(f"warning: 'npm run track' exited with code {result.returncode}")
 
 
 if __name__ == "__main__":
