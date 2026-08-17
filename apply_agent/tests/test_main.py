@@ -83,6 +83,7 @@ class _FakeDeps:
     screenshots: list = field(default_factory=list)
     cleaned: list = field(default_factory=list)
     delays: int = 0
+    delay_raises: bool = False
 
     def is_open(self, url: str) -> bool:
         return self.open_result and url not in self.closed_urls
@@ -112,6 +113,8 @@ class _FakeDeps:
         self.screenshots.append(job.id)
 
     def delay(self) -> None:
+        if self.delay_raises:
+            raise RuntimeError("delay boom")
         self.delays += 1
 
     def cleanup(self, job) -> None:
@@ -159,6 +162,22 @@ def test_confident_confirmed_job_submits_exactly_once():
     job = conn.execute("SELECT status FROM jobs WHERE id=1").fetchone()
     assert job["status"] == "submitted"
     assert deps.submitted == [1]
+
+
+def test_delay_error_after_submit_does_not_corrupt_outcome():
+    """A pacing delay() that raises AFTER a real submit must not overwrite the
+    already-committed outcome. The per-job except must not swallow a post-submit
+    delay error into a spurious 'failed' (double-count + mislabel)."""
+    conn = _conn()
+    settings = _settings(dry_run=False)
+    deps = _fake_deps(confidence=0.95, captcha=False, confirmation=True, delay_raises=True)
+
+    summary = run(conn, settings, _profile(), deps, NOW)  # must not raise
+
+    assert summary.submitted == 1 and summary.failed == 0
+    assert conn.execute("SELECT COUNT(*) n FROM applications").fetchone()["n"] == 1
+    job = conn.execute("SELECT status FROM jobs WHERE id=1").fetchone()
+    assert job["status"] == "submitted"
 
 
 def test_unconfirmed_submit_outcome_never_applies():

@@ -70,6 +70,10 @@ def run(conn, settings, profile, deps, now) -> Summary:
     submitted_this_run = count_applied_today(conn, _start_of_day_iso(now))
 
     for job in queued_jobs(conn):
+        # Set once a submit was actually attempted, so pacing happens only after
+        # a real browser submission -- and OUTSIDE the guarded region below, so a
+        # delay() error can never overwrite an already-committed submit outcome.
+        submit_attempted = False
         # `deps.cleanup(job)` runs exactly once per job, on every branch --
         # including the preflight-blocked branch (where it's a safe no-op,
         # since no page was ever opened) -- so a real Playwright page never
@@ -107,6 +111,7 @@ def run(conn, settings, profile, deps, now) -> Summary:
                 continue
 
             outcome = verify_submit(deps.submit_and_read(job), deps.is_confirmation)
+            submit_attempted = True
             if outcome == "submitted":
                 record_submitted(conn, job, profile.email)
                 s.submitted += 1
@@ -114,7 +119,6 @@ def run(conn, settings, profile, deps, now) -> Summary:
             else:
                 mark_status(conn, job.id, "failed", "submit outcome uncertain")
                 s.failed += 1
-            deps.delay()
         except Exception as exc:
             # Isolate per-job failures: any error in open/map/submit/db for one
             # job must not abort the batch. Mark it failed (a terminal status --
@@ -125,6 +129,15 @@ def run(conn, settings, profile, deps, now) -> Summary:
             continue
         finally:
             deps.cleanup(job)
+
+        # Pace AFTER the outcome is durably recorded and outside the try/except,
+        # so a delay() error cannot mislabel the job or abort the batch. delay()
+        # is a sleep and should never raise, but we isolate it regardless.
+        if submit_attempted:
+            try:
+                deps.delay()
+            except Exception:
+                pass
 
     return s
 
