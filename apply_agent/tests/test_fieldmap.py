@@ -50,3 +50,28 @@ def test_merge_llm_mapping_is_conservative_when_llm_returns_nothing():
     merge_llm_mapping(m, fields, {})  # LLM mapped nothing
     assert m.unmapped == ["q_custom"]       # still unmapped
     assert m.confidence == 0.5              # only email filled -> 1/2, never inflated
+
+
+def test_confidence_excludes_file_input_from_the_denominator():
+    # A resume file input is uploaded out-of-band by fill_form, not via the
+    # value mapping, so it must not count against confidence -- otherwise a
+    # cleanly-fillable form scores (n)/(n+1) and never clears the auto-submit
+    # threshold. It is also not a mapping gap, so it must not appear in unmapped.
+    fields = [
+        Field(name="first_name", label="First Name", id="", aria="", kind="text", required=True),
+        Field(name="email", label="Email", id="", aria="", kind="email", required=True),
+        Field(name="resume", label="Resume", id="", aria="", kind="file", required=True),
+    ]
+    m = map_fields(fields, PROF)
+    assert m.confidence == 1.0          # 2 mapped / 2 countable -- file excluded
+    assert "resume" not in m.unmapped
+
+
+def test_merge_llm_confidence_excludes_file_input():
+    fields = [
+        Field(name="q_custom", label="Why?", id="", aria="", kind="textarea", required=True),
+        Field(name="resume", label="Resume", id="", aria="", kind="file", required=True),
+    ]
+    m = Mapping(values={}, unmapped=["q_custom"], confidence=0.0)
+    merge_llm_mapping(m, fields, {"q_custom": "because"})
+    assert m.confidence == 1.0          # 1 filled / 1 countable -- file excluded

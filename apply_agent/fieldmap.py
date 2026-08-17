@@ -29,6 +29,15 @@ _PATTERNS = {
 }
 
 
+# Inputs that carry no text value the mapping is responsible for: a file input
+# is uploaded out-of-band by fill_form, and hidden/submit/button inputs are not
+# filled at all. They must not count toward the confidence denominator, or a
+# cleanly-fillable form scores (n)/(n+1) and never clears the auto-submit
+# threshold. (read_fields already skips hidden/submit/button upstream; excluding
+# them here too is defensive and keeps the denominator honest.)
+_UNCOUNTED_KINDS = frozenset({"file", "hidden", "submit", "button"})
+
+
 def _hay(f: Field) -> str:
     return " ".join([f.name, f.label, f.id, f.aria]).lower()
 
@@ -44,8 +53,11 @@ def map_fields(fields, profile) -> Mapping:
         "phone": profile.phone,
         "linkedin": profile.linkedin,
     }
-    values, unmapped, matched = {}, [], 0
+    values, unmapped, matched, countable = {}, [], 0, 0
     for f in fields:
+        if f.kind in _UNCOUNTED_KINDS:
+            continue  # not part of the value mapping; see _UNCOUNTED_KINDS
+        countable += 1
         hay = _hay(f)
         hit = next((k for k, pats in _PATTERNS.items() if any(p in hay for p in pats)), None)
         if hit and supply.get(hit):
@@ -53,8 +65,7 @@ def map_fields(fields, profile) -> Mapping:
             matched += 1
         elif f.required:
             unmapped.append(f.name)
-    total = len(fields) or 1
-    confidence = matched / total
+    confidence = matched / (countable or 1)
     return Mapping(values, unmapped, confidence)
 
 
@@ -70,7 +81,8 @@ def merge_llm_mapping(mapping: Mapping, fields, extra: dict) -> Mapping:
     """
     mapping.values.update(extra)
     mapping.unmapped = [name for name in mapping.unmapped if name not in extra]
-    total = len(fields) or 1
-    filled = sum(1 for f in fields if f.name in mapping.values)
+    countable = [f for f in fields if f.kind not in _UNCOUNTED_KINDS]
+    total = len(countable) or 1
+    filled = sum(1 for f in countable if f.name in mapping.values)
     mapping.confidence = min(1.0, filled / total)
     return mapping
