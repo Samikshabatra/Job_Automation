@@ -34,6 +34,15 @@ describe('buildPrompt', () => {
   it('never contains the full JD text', () => {
     expect(buildPrompt(req)).not.toContain('jdText');
   });
+
+  it('appends a repair hint when one is provided', () => {
+    const p = buildPrompt({ ...req, repairHint: 'Remove terms not in the resume: TensorFlow' });
+    expect(p).toContain('Remove terms not in the resume: TensorFlow');
+  });
+
+  it('omits the repair section when no hint is given', () => {
+    expect(buildPrompt(req).toUpperCase()).not.toContain('PREVIOUS ATTEMPT WAS REJECTED');
+  });
 });
 
 describe('tailor', () => {

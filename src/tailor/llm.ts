@@ -10,6 +10,13 @@ export interface TailorRequest {
   jdSkills: string[];
   jobTitle: string;
   entries: ExperienceEntry[];
+  /**
+   * Guidance from a prior tailor+verify pass that the fabrication gate
+   * rejected — the offending bullets and how to fix them. Appended to the
+   * prompt so a repair attempt can steer the model away from the exact
+   * problem instead of blindly re-rolling. See the resume-optimizer agent.
+   */
+  repairHint?: string;
 }
 
 const TailorResponseSchema = z.object({
@@ -32,11 +39,15 @@ export function buildPrompt(req: TailorRequest): string {
       .map((b) => ({ id: b.id, text: b.text })),
   }));
 
+  const repair = req.repairHint
+    ? `\nPREVIOUS ATTEMPT WAS REJECTED by the fabrication check. Fix exactly this and change nothing else:\n${req.repairHint}\n`
+    : '';
+
   return `You are tailoring an existing resume to a job posting.
 
 TARGET ROLE: ${req.jobTitle}
 JOB KEYWORDS: ${req.jdSkills.join(', ')}
-
+${repair}
 CANDIDATE BULLETS (the only material you may use):
 ${JSON.stringify(entries, null, 2)}
 
