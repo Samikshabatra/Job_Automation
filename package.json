@@ -10,7 +10,8 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "daily": "tsx src/run/daily.ts",
-    "track": "tsx src/run/track.ts"
+    "track": "tsx src/run/track.ts",
+    "tailor-once": "tsx src/run/tailor_once.ts"
   },
   "keywords": [],
   "author": "",
