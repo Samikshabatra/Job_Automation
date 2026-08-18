@@ -16,8 +16,8 @@ dependencies = [
 ]
 
 [tool.setuptools]
-packages = ["apply_agent"]
+packages = ["apply_agent", "resume_agent"]
 
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
-testpaths = ["apply_agent/tests"]
+testpaths = ["apply_agent/tests", "resume_agent/tests"]
