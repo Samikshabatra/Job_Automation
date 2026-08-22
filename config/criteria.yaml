@@ -22,7 +22,9 @@ freshness:
                                 # liveness check confirms the posting is still open before submit
   verify_open_before_submit: true
 scoring:
-  threshold: 0                  # apply regardless of skill-match score; location/title/experience still gate
+  threshold: 50                 # skill+title match out of 100; below this the job is skipped.
+                                # Raised from 0 after the widened title gate let
+                                # low-relevance roles through at scores of 23-24.
 limits:
   daily_cap: 30
   per_company_open_applications: 3
