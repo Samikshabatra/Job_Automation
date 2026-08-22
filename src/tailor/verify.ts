@@ -168,6 +168,7 @@ function properNouns(text: string): string[] {
 
 export function verifyNoFabrication(
   res: TailorResponse, source: ExperienceEntry[], skills: string[] = [],
+  jobTitle = '',
 ): { ok: boolean; offending: string[] } {
   const entryById = new Map(source.map((e) => [e.id, e]));
   const offending: string[] = [];
@@ -240,9 +241,21 @@ export function verifyNoFabrication(
       offending.push(`summary (invented figures: ${inventedFigures.join(', ')})`);
     }
 
-    // Same name allow-set as the bullets: text + declared skills + skills.json.
+    // The bullets' allow-set PLUS the words of the role being applied for.
+    // A summary conventionally names its target role, and `properNouns` reads
+    // any capitalized mid-sentence word as a name — so tailoring for
+    // "Analytics Engineer - Finance" reported "Analytics" as invented purely
+    // because that word appears nowhere in the resume.
+    //
+    // Deliberately the TITLE only, not the JD: a few words naming the role is
+    // not a claim about the candidate's history, whereas admitting the whole
+    // posting would let any technology it mentions pass unchallenged. And
+    // deliberately summary-only — a BULLET claiming the target role's
+    // vocabulary as work actually done is still fabrication, so the loop above
+    // keeps the strict set.
+    const allowedInSummary = new Set([...allowedNames, ...normalizedTokens(jobTitle)]);
     const inventedNames = properNouns(res.summary).filter(
-      (name) => !normalizedTokens(name).every((t) => allowedNames.has(t)),
+      (name) => !normalizedTokens(name).every((t) => allowedInSummary.has(t)),
     );
     if (inventedNames.length) {
       offending.push(`summary (invented names: ${[...new Set(inventedNames)].join(', ')})`);

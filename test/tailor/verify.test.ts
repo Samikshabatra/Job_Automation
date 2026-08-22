@@ -255,6 +255,42 @@ describe('verifyNoFabrication', () => {
       expect(v.offending.join(' ')).toContain('invented figures');
     });
 
+    it('accepts the target role named in the summary', () => {
+      // The live failure this guards: tailoring for "Analytics Engineer -
+      // Finance" wrote a summary naming that role, and "Analytics" was
+      // reported as an invented name because the word appears nowhere in the
+      // resume. Naming the role being applied for is not a claim about the
+      // candidate's history.
+      const res = {
+        entries: [{ id: 'e1', bullets: [{ id: 'a1', text: source[0].bullets[0].text }] }],
+        summary: 'Data analyst targeting an Analytics Engineer role.',
+      };
+      expect(verifyNoFabrication(res, source, [], 'Analytics Engineer - Finance').ok).toBe(true);
+    });
+
+    it('still rejects a technology absent from both the resume and the job title', () => {
+      const res = {
+        entries: [{ id: 'e1', bullets: [{ id: 'a1', text: source[0].bullets[0].text }] }],
+        summary: 'Data analyst with deep Kubernetes experience.',
+      };
+      const check = verifyNoFabrication(res, source, [], 'Analytics Engineer - Finance');
+      expect(check.ok).toBe(false);
+      expect(check.offending.join(' ')).toMatch(/Kubernetes/);
+    });
+
+    it('does not let the job title excuse an unbacked name in a BULLET', () => {
+      // The widened allow-set is summary-only. A bullet claiming the target
+      // role's vocabulary as work the candidate did is still fabrication.
+      const res = {
+        entries: [{ id: 'e1', bullets: [{
+          id: 'a1',
+          text: 'Built SQL pipelines aggregating 12M rows of transaction data for Databricks',
+        }] }],
+        summary: '',
+      };
+      expect(verifyNoFabrication(res, source, [], 'Databricks Engineer').ok).toBe(false);
+    });
+
     it('ignores an empty summary', () => {
       const res = { entries: [{ id: 'e1', bullets: [faithful] }], summary: '   ' };
       expect(verifyNoFabrication(res, source).ok).toBe(true);
