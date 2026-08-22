@@ -37,6 +37,14 @@ describe('insertJob', () => {
     expect(row.first_seen_at).toMatch(/^\d{4}-\d{2}-\d{2}T/);
   });
 
+  it('returns null when only the source identity repeats, not the fingerprint', () => {
+    // The exact regression the source-identity index was added for: a
+    // normalizer change alters the fingerprint of a posting already stored,
+    // and the next poll must still recognise it as the same job.
+    insertJob(db, { ...base, fingerprint: 'fp-first', sourceJobId: 'shared' });
+    expect(insertJob(db, { ...base, fingerprint: 'fp-renormalized', sourceJobId: 'shared' })).toBeNull();
+  });
+
   it('still throws on a non-fingerprint constraint violation (foreign key)', () => {
     expect(() => insertJob(db, { ...base, fingerprint: 'fp-fk', boardId: 999999 })).toThrow();
   });
@@ -54,8 +62,8 @@ describe('updateJobStatus', () => {
 
 describe('listJobsByStatus', () => {
   it('returns only jobs in the requested status', () => {
-    const a = insertJob(db, { ...base, fingerprint: 'a' })!;
-    insertJob(db, { ...base, fingerprint: 'b' });
+    const a = insertJob(db, { ...base, fingerprint: 'a', sourceJobId: 'a' })!;
+    insertJob(db, { ...base, fingerprint: 'b', sourceJobId: 'b' });
     updateJobStatus(db, a, 'tailored');
     expect(listJobsByStatus(db, 'tailored').map((r) => r.fingerprint)).toEqual(['a']);
   });
@@ -63,8 +71,8 @@ describe('listJobsByStatus', () => {
 
 describe('listAllJobsForTracker', () => {
   it('returns every job regardless of status, newest first', () => {
-    const a = insertJob(db, { ...base, fingerprint: 'a' })!;
-    const b = insertJob(db, { ...base, fingerprint: 'b' })!;
+    const a = insertJob(db, { ...base, fingerprint: 'a', sourceJobId: 'a' })!;
+    const b = insertJob(db, { ...base, fingerprint: 'b', sourceJobId: 'b' })!;
     updateJobStatus(db, a, 'skipped', 'below threshold');
     updateJobStatus(db, b, 'tailored');
     const rows = listAllJobsForTracker(db);

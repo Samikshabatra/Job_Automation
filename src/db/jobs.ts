@@ -19,9 +19,17 @@ export function insertJob(db: Database, job: NewJob): number | null {
     return Number(info.lastInsertRowid);
   } catch (err) {
     const code = err instanceof Error ? (err as Error & { code?: string }).code : undefined;
-    if (code === 'SQLITE_CONSTRAINT_UNIQUE' && err instanceof Error && err.message.includes('jobs.fingerprint')) {
-      return null;
-    }
+    // A job already stored is not an error, it is the normal case on every
+    // poll after the first. Two constraints can say so: `jobs.fingerprint`
+    // (the fuzzy cross-source key) and `idx_jobs_source_identity` (the board's
+    // own id). Only the first was handled here, so once the second index
+    // existed a routine re-poll threw and killed the run.
+    // SQLite names the offending COLUMNS, not the index, so the source
+    // identity conflict reads "jobs.source, jobs.source_job_id".
+    const duplicate = err instanceof Error
+      && (err.message.includes('jobs.fingerprint')
+        || err.message.includes('jobs.source, jobs.source_job_id'));
+    if (code === 'SQLITE_CONSTRAINT_UNIQUE' && duplicate) return null;
     throw err;
   }
 }

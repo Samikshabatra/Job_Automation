@@ -32,7 +32,10 @@ function makeJob(overrides: Partial<Record<string, unknown>> = {}): JobRow {
   const fingerprint = String(overrides.fingerprint ?? 'fp1');
   insertJob(db, {
     fingerprint,
-    boardId: null, source: 'greenhouse', sourceJobId: '1',
+    // Distinct per job: a board gives every posting its own id, and
+    // `idx_jobs_source_identity` now enforces that, so a shared literal here
+    // would silently collapse fixtures meant to be separate jobs.
+    boardId: null, source: 'greenhouse', sourceJobId: fingerprint,
     url: 'https://x/1', company: String(overrides.company ?? 'Acme'),
     title: String(overrides.title ?? 'Data Analyst'), normTitle: 'data analyst',
     location: 'Remote', normLocation: 'remote',
