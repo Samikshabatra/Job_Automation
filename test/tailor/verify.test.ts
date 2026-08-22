@@ -27,6 +27,34 @@ describe('verifyNoFabrication', () => {
     expect(verifyNoFabrication(res, source).ok).toBe(true);
   });
 
+  describe('similarity floor calibration', () => {
+    // Pins the band the 0.45 floor was calibrated for. The live run rejected
+    // faithful rewordings scoring 0.522-0.586 at the old 0.6 floor; these
+    // cases keep that band passing without letting a wholly different claim in.
+    it('accepts a heavy but faithful reword that the 0.6 floor rejected', () => {
+      const res = {
+        entries: [{ id: 'e1', bullets: [{
+          id: 'a2',
+          text: 'Automated the weekly reporting workflow in Python, reducing a 6 hour manual task to 10 minutes',
+        }] }],
+        summary: '',
+      };
+      expect(verifyNoFabrication(res, source).ok).toBe(true);
+    });
+
+    it('still rejects a bullet that shares only incidental vocabulary', () => {
+      const res = {
+        entries: [{ id: 'e1', bullets: [{
+          id: 'a2',
+          text: 'Automated infrastructure provisioning in Python across a fleet of build agents',
+        }] }],
+        summary: '',
+      };
+      const check = verifyNoFabrication(res, source);
+      expect(check.ok).toBe(false);
+    });
+  });
+
   it('rejects an invented bullet', () => {
     const res = {
       entries: [{ id: 'e1', bullets: [{ id: 'a1', text: 'Led a team of 12 engineers at Google for three years' }] }],
@@ -225,6 +253,42 @@ describe('verifyNoFabrication', () => {
       const v = verifyNoFabrication(res, source);
       expect(v.ok).toBe(false);
       expect(v.offending.join(' ')).toContain('invented figures');
+    });
+
+    it('accepts the target role named in the summary', () => {
+      // The live failure this guards: tailoring for "Analytics Engineer -
+      // Finance" wrote a summary naming that role, and "Analytics" was
+      // reported as an invented name because the word appears nowhere in the
+      // resume. Naming the role being applied for is not a claim about the
+      // candidate's history.
+      const res = {
+        entries: [{ id: 'e1', bullets: [{ id: 'a1', text: source[0].bullets[0].text }] }],
+        summary: 'Data analyst targeting an Analytics Engineer role.',
+      };
+      expect(verifyNoFabrication(res, source, [], 'Analytics Engineer - Finance').ok).toBe(true);
+    });
+
+    it('still rejects a technology absent from both the resume and the job title', () => {
+      const res = {
+        entries: [{ id: 'e1', bullets: [{ id: 'a1', text: source[0].bullets[0].text }] }],
+        summary: 'Data analyst with deep Kubernetes experience.',
+      };
+      const check = verifyNoFabrication(res, source, [], 'Analytics Engineer - Finance');
+      expect(check.ok).toBe(false);
+      expect(check.offending.join(' ')).toMatch(/Kubernetes/);
+    });
+
+    it('does not let the job title excuse an unbacked name in a BULLET', () => {
+      // The widened allow-set is summary-only. A bullet claiming the target
+      // role's vocabulary as work the candidate did is still fabrication.
+      const res = {
+        entries: [{ id: 'e1', bullets: [{
+          id: 'a1',
+          text: 'Built SQL pipelines aggregating 12M rows of transaction data for Databricks',
+        }] }],
+        summary: '',
+      };
+      expect(verifyNoFabrication(res, source, [], 'Databricks Engineer').ok).toBe(false);
     });
 
     it('ignores an empty summary', () => {

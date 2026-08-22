@@ -1,7 +1,19 @@
 import type { ExperienceEntry } from './resume.js';
 import type { TailorResponse } from './llm.js';
 
-const SIMILARITY_FLOOR = 0.6;
+/**
+ * Content-token Jaccard a tailored bullet must retain against its source
+ * bullet. Calibrated, not guessed: at 0.6 the live run rejected seven bullets
+ * that were all faithful rewordings of real resume content, scoring 0.522 to
+ * 0.586 against their source. 0.45 clears that band with headroom.
+ *
+ * Lowering this is narrower than it looks. Similarity is one of four
+ * independent checks in `verifyNoFabrication` — invented figures, invented
+ * proper nouns, and unknown entry/bullet ids each fail on their own regardless
+ * of this value. So the floor governs how far a bullet may be REWORDED, not
+ * whether a new employer, metric or technology can be introduced.
+ */
+const SIMILARITY_FLOOR = 0.45;
 
 /**
  * Words that carry no claim. Dropping them stops the similarity score from
@@ -106,6 +118,16 @@ function contentTokens(s: string): Set<string> {
   return new Set(normalizedTokens(s).filter((t) => !STOPWORD_STEMS.has(t)));
 }
 
+/**
+ * Content-token Jaccard between a tailored bullet and its source bullet —
+ * the same number `verifyNoFabrication` compares against `SIMILARITY_FLOOR`.
+ * Exported so the floor can be calibrated against real rejections instead of
+ * guessed at.
+ */
+export function bulletSimilarity(tailored: string, source: string): number {
+  return jaccard(tailored, source);
+}
+
 function jaccard(a: string, b: string): number {
   const A = contentTokens(a);
   const B = contentTokens(b);
@@ -146,6 +168,7 @@ function properNouns(text: string): string[] {
 
 export function verifyNoFabrication(
   res: TailorResponse, source: ExperienceEntry[], skills: string[] = [],
+  jobTitle = '',
 ): { ok: boolean; offending: string[] } {
   const entryById = new Map(source.map((e) => [e.id, e]));
   const offending: string[] = [];
@@ -218,9 +241,21 @@ export function verifyNoFabrication(
       offending.push(`summary (invented figures: ${inventedFigures.join(', ')})`);
     }
 
-    // Same name allow-set as the bullets: text + declared skills + skills.json.
+    // The bullets' allow-set PLUS the words of the role being applied for.
+    // A summary conventionally names its target role, and `properNouns` reads
+    // any capitalized mid-sentence word as a name — so tailoring for
+    // "Analytics Engineer - Finance" reported "Analytics" as invented purely
+    // because that word appears nowhere in the resume.
+    //
+    // Deliberately the TITLE only, not the JD: a few words naming the role is
+    // not a claim about the candidate's history, whereas admitting the whole
+    // posting would let any technology it mentions pass unchallenged. And
+    // deliberately summary-only — a BULLET claiming the target role's
+    // vocabulary as work actually done is still fabrication, so the loop above
+    // keeps the strict set.
+    const allowedInSummary = new Set([...allowedNames, ...normalizedTokens(jobTitle)]);
     const inventedNames = properNouns(res.summary).filter(
-      (name) => !normalizedTokens(name).every((t) => allowedNames.has(t)),
+      (name) => !normalizedTokens(name).every((t) => allowedInSummary.has(t)),
     );
     if (inventedNames.length) {
       offending.push(`summary (invented names: ${[...new Set(inventedNames)].join(', ')})`);

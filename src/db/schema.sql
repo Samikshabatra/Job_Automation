@@ -38,6 +38,11 @@ CREATE TABLE IF NOT EXISTS jobs (
 CREATE INDEX IF NOT EXISTS idx_jobs_status  ON jobs(status);
 CREATE INDEX IF NOT EXISTS idx_jobs_company ON jobs(company);
 
+-- NOTE: the `idx_jobs_source_identity` unique index is NOT created here. It
+-- cannot be, on any database that predates it: the duplicate rows it forbids
+-- already exist, so the CREATE would throw. `openDb` creates it after running
+-- `dedupeBySourceId`. See src/db/index.ts.
+
 CREATE TABLE IF NOT EXISTS applications (
   id            INTEGER PRIMARY KEY AUTOINCREMENT,
   job_id        INTEGER NOT NULL REFERENCES jobs(id),

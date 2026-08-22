@@ -1,7 +1,9 @@
 node_modules/
 dist/
 .env
-data/*.db
+# Covers the database, its WAL/SHM sidecars, and any .bak- copy taken
+# before a migration. A bare `data/*.db` matched none of those.
+data/*.db*
 runs/
 resume/*.json
 !resume/*.example.json

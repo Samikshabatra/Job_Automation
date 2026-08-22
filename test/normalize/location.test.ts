@@ -9,8 +9,34 @@ describe('normalizeLocation', () => {
     expect(normalizeLocation('Banglore')).toBe('bengaluru');
   });
 
-  it('does not map untargeted Indian cities to a canonical', () => {
-    for (const s of ['Hyderabad', 'Pune', 'Mumbai', 'Chennai']) {
+  it('maps the widened metro set to canonicals', () => {
+    expect(normalizeLocation('Hyderabad, Telangana')).toBe('hyderabad');
+    expect(normalizeLocation('Secunderabad')).toBe('hyderabad');
+    expect(normalizeLocation('Bombay')).toBe('mumbai');
+    expect(normalizeLocation('Mumbai-Lower Parel, India')).toBe('mumbai');
+    expect(normalizeLocation('Navi Mumbai')).toBe('mumbai');
+    expect(normalizeLocation('Poona')).toBe('pune');
+    expect(normalizeLocation('Madras')).toBe('chennai');
+    expect(normalizeLocation('Calcutta')).toBe('kolkata');
+    for (const s of ['Hyderabad', 'Pune', 'Mumbai', 'Chennai', 'Kolkata', 'Ahmedabad']) {
+      expect(isUnknownLocationToken(s)).toBe(false);
+    }
+  });
+
+  it('maps a bare country mention to india without shadowing a named city', () => {
+    expect(normalizeLocation('India')).toBe('india');
+    // Longest alias wins, so a city named alongside the country still wins.
+    expect(normalizeLocation('Mumbai, India')).toBe('mumbai');
+    expect(normalizeLocation('Hyderabad, India')).toBe('hyderabad');
+  });
+
+  it('does not treat Indiana or Indianapolis as india', () => {
+    expect(normalizeLocation('Indianapolis, IN')).not.toBe('india');
+    expect(isUnknownLocationToken('Indiana')).toBe(true);
+  });
+
+  it('still rejects Indian cities outside the target set', () => {
+    for (const s of ['Jaipur', 'Indore', 'Bhopal', 'Purnia']) {
       expect(normalizeLocation(s)).toBe(s.toLowerCase());
       expect(isUnknownLocationToken(s)).toBe(true);
     }

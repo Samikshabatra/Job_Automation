@@ -1,13 +1,26 @@
-// Only the four target *cities* live here. Remote is handled separately below,
+// Only the target *cities* live here. Remote is handled separately below,
 // because a bare "remote" and a "Remote - United Kingdom" must not collapse to
 // the same token: the first is in scope, the second is a foreign role that
 // merely contains the word "remote". Misspellings seen in live board data
 // (e.g. "Banglore") are folded in so real matches are not missed.
+//
+// `india` is a canonical of its own so a JD that names only the country
+// ("India", "Mumbai-Lower Parel, India" once the city misses) still lands in
+// scope. Longest-alias-wins in `matchCity` keeps it from shadowing a real
+// city: "mumbai india" resolves to `mumbai`, not `india`. `` matching means
+// "Indiana" and "Indianapolis" never match `india`.
 const CITY_ALIASES: Record<string, string[]> = {
   bengaluru: ['bengaluru', 'bangalore', 'blr', 'banglore', 'bangaluru', 'bengalore'],
   gurugram: ['gurugram', 'gurgaon'],
   delhi: ['delhi', 'new delhi', 'delhi ncr', 'ncr'],
   noida: ['noida', 'greater noida'],
+  hyderabad: ['hyderabad', 'hyderabad telangana', 'secunderabad', 'hyd'],
+  pune: ['pune', 'poona', 'pimpri chinchwad'],
+  mumbai: ['mumbai', 'bombay', 'navi mumbai', 'thane', 'lower parel'],
+  chennai: ['chennai', 'madras'],
+  kolkata: ['kolkata', 'calcutta'],
+  ahmedabad: ['ahmedabad', 'gandhinagar'],
+  india: ['india', 'bharat'],
 };
 
 const CITY_LOOKUP = new Map<string, string>();

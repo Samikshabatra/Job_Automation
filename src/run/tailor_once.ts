@@ -54,7 +54,9 @@ export async function tailorOnce(deps: TailorOnceDeps): Promise<TailorOnceResult
     { call: deps.callLlm },
   );
 
-  const check = verifyNoFabrication(tailored, resume.experience, Object.keys(resume.skills));
+  const check = verifyNoFabrication(
+    tailored, resume.experience, Object.keys(resume.skills), job.title,
+  );
   if (!check.ok) return { ok: false, offending: check.offending };
 
   const out = resumePath(archiveDir, job.company, job.title, now);
