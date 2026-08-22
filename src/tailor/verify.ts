@@ -1,7 +1,19 @@
 import type { ExperienceEntry } from './resume.js';
 import type { TailorResponse } from './llm.js';
 
-const SIMILARITY_FLOOR = 0.6;
+/**
+ * Content-token Jaccard a tailored bullet must retain against its source
+ * bullet. Calibrated, not guessed: at 0.6 the live run rejected seven bullets
+ * that were all faithful rewordings of real resume content, scoring 0.522 to
+ * 0.586 against their source. 0.45 clears that band with headroom.
+ *
+ * Lowering this is narrower than it looks. Similarity is one of four
+ * independent checks in `verifyNoFabrication` — invented figures, invented
+ * proper nouns, and unknown entry/bullet ids each fail on their own regardless
+ * of this value. So the floor governs how far a bullet may be REWORDED, not
+ * whether a new employer, metric or technology can be introduced.
+ */
+const SIMILARITY_FLOOR = 0.45;
 
 /**
  * Words that carry no claim. Dropping them stops the similarity score from
@@ -104,6 +116,16 @@ const STOPWORD_STEMS = new Set([...STOPWORDS].map(stem));
 /** Claim-bearing tokens only — what the similarity score is computed over. */
 function contentTokens(s: string): Set<string> {
   return new Set(normalizedTokens(s).filter((t) => !STOPWORD_STEMS.has(t)));
+}
+
+/**
+ * Content-token Jaccard between a tailored bullet and its source bullet —
+ * the same number `verifyNoFabrication` compares against `SIMILARITY_FLOOR`.
+ * Exported so the floor can be calibrated against real rejections instead of
+ * guessed at.
+ */
+export function bulletSimilarity(tailored: string, source: string): number {
+  return jaccard(tailored, source);
 }
 
 function jaccard(a: string, b: string): number {

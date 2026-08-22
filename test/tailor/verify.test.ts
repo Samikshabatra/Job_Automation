@@ -27,6 +27,34 @@ describe('verifyNoFabrication', () => {
     expect(verifyNoFabrication(res, source).ok).toBe(true);
   });
 
+  describe('similarity floor calibration', () => {
+    // Pins the band the 0.45 floor was calibrated for. The live run rejected
+    // faithful rewordings scoring 0.522-0.586 at the old 0.6 floor; these
+    // cases keep that band passing without letting a wholly different claim in.
+    it('accepts a heavy but faithful reword that the 0.6 floor rejected', () => {
+      const res = {
+        entries: [{ id: 'e1', bullets: [{
+          id: 'a2',
+          text: 'Automated the weekly reporting workflow in Python, reducing a 6 hour manual task to 10 minutes',
+        }] }],
+        summary: '',
+      };
+      expect(verifyNoFabrication(res, source).ok).toBe(true);
+    });
+
+    it('still rejects a bullet that shares only incidental vocabulary', () => {
+      const res = {
+        entries: [{ id: 'e1', bullets: [{
+          id: 'a2',
+          text: 'Automated infrastructure provisioning in Python across a fleet of build agents',
+        }] }],
+        summary: '',
+      };
+      const check = verifyNoFabrication(res, source);
+      expect(check.ok).toBe(false);
+    });
+  });
+
   it('rejects an invented bullet', () => {
     const res = {
       entries: [{ id: 'e1', bullets: [{ id: 'a1', text: 'Led a team of 12 engineers at Google for three years' }] }],
