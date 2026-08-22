@@ -15,7 +15,9 @@ const ABBREVIATIONS: [RegExp, string][] = [
 // the separator (e.g. "- US Enterprise") is a differentiator, not a location,
 // and must survive.
 const LOCATION_KEYWORDS =
-  'remote|hybrid|onsite|on-site|india|bengaluru|bangalore|delhi|gurgaon|gurugram|noida|hyderabad|pune|mumbai|chennai|anywhere|worldwide|us|usa|emea|apac';
+  'remote|hybrid|onsite|on-site|india|bengaluru|bangalore|delhi|gurgaon|gurugram|noida|'
+  + 'hyderabad|secunderabad|pune|mumbai|bombay|chennai|kolkata|ahmedabad|'
+  + 'anywhere|worldwide|us|usa|emea|apac';
 
 const LOCATION_SUFFIX = new RegExp(
   `\\s*[-–—,|]\\s*(?:${LOCATION_KEYWORDS})\\b(?:\\s*[-–—,|]\\s*(?:${LOCATION_KEYWORDS})\\b)*\\s*$`,

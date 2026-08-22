@@ -1,13 +1,22 @@
 titles:
+  # Matched as SUBSTRINGS of the normalized title, so "software engineer" also
+  # catches "Software Engineer II, Platform". normalizeTitle expands sde/swe/
+  # mle/ds/ml/nlp abbreviations before this runs.
   include: [ai engineer, ai automation engineer, ml engineer, machine learning engineer,
-             data analyst, data engineer, data scientist, analytics engineer,
-             applied scientist, nlp engineer, mlops engineer]
-  exclude: [senior,principal,director]
+             machine learning, data analyst, data engineer, data scientist, data science,
+             analytics engineer, business analyst, business analytics,
+             applied scientist, research engineer, research scientist,
+             nlp engineer, natural language processing, mlops engineer,
+             software engineer, backend engineer, platform engineer,
+             python developer, automation engineer]
+  exclude: [senior,principal,director,staff,lead,head of,vp,manager,architect,
+            account executive,sales,intern]
 experience:
   max_years_required: 4         # loosened from 2; JD MINIMUM stated years above this is rejected
                                 # "0-4 years" ranges pass, "5+ years" does not
 locations:
-  include: [bengaluru,delhi, gurugram, noida, remote]
+  include: [bengaluru, delhi, gurugram, noida, hyderabad, pune, mumbai,
+            chennai, kolkata, ahmedabad, india, remote]
 freshness:
   max_posted_age_days: 60       # older postings are never applied to;
                                 # liveness check confirms the posting is still open before submit
