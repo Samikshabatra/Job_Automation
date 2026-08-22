@@ -11,6 +11,7 @@ import asyncio
 import sqlite3
 import subprocess
 import sys
+import functools
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -19,9 +20,15 @@ from apply_agent.review import review_queue
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 
+# The `npm run track` subprocess writes directly to the console; without
+# flushing, our buffered prints surface after it and the transcript reads
+# out of order.
+print = functools.partial(__builtins__['print'] if isinstance(__builtins__, dict)
+                          else __builtins__.print, flush=True)
+
 _PROMPT = (
     "\n  Finish the form in the browser and click Submit.\n"
-    "  Then: [enter] recorded as submitted  ·  [s] skip  ·  [q] quit\n  > "
+    "  Then: [enter] recorded as submitted  |  [s] skip  |  [q] quit\n  > "
 )
 
 
@@ -65,7 +72,7 @@ def _build_deps(settings, profile, total):
 
         def open_and_fill(self, job, profile):
             seen["n"] += 1
-            print(f"\n  [{seen['n']}/{total}] {job.company} — {job.title}")
+            print(f"\n  [{seen['n']}/{total}] {job.company} - {job.title}")
             page = loop.run_until_complete(browser_mod.open_form(context, job.url))
             pages[job.id] = page
             # Give a client-rendered form time to hydrate before reading it.
@@ -76,7 +83,7 @@ def _build_deps(settings, profile, total):
             loop.run_until_complete(browser_mod.fill_form(page, mapping.values, job.resume_path))
 
             print(f"        filled {len(mapping.values)}/{len(fields)} fields"
-                  f" · {len(mapping.unmapped)} still need you")
+                  f", {len(mapping.unmapped)} still need you")
             if job.resume_path:
                 print(f"        resume: {Path(job.resume_path).name}")
             return mapping
@@ -109,7 +116,7 @@ def _build_deps(settings, profile, total):
                 except Exception:
                     html = ""
             if detect.is_confirmation(html):
-                print("        confirmation page detected — recorded as submitted")
+                print("        confirmation page detected - recorded as submitted")
                 return "submitted"
 
             again = input(
@@ -148,7 +155,7 @@ def main() -> None:
     only_job_id = int(sys.argv[1]) if len(sys.argv) > 1 else None
 
     if not settings.browser_enabled:
-        print("browser_enabled is false in config/criteria.yaml — nothing to review.")
+        print("browser_enabled is false in config/criteria.yaml - nothing to review.")
         return
 
     # This command is a conversation: it opens a browser and waits for a person.
