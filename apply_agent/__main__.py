@@ -27,6 +27,7 @@ from __future__ import annotations
 import os
 import sqlite3
 import subprocess
+import sys
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
@@ -60,16 +61,20 @@ def _start_of_day_iso(now: datetime) -> str:
     return datetime(now.year, now.month, now.day, tzinfo=now.tzinfo).isoformat()
 
 
-def run(conn, settings, profile, deps, now) -> Summary:
+def run(conn, settings, profile, deps, now, only_job_id=None) -> Summary:
     """Process every queued job once, synchronously, through the safety
-    gates described above. Returns a `Summary` of what happened."""
+    gates described above. Returns a `Summary` of what happened.
+
+    `only_job_id` restricts the run to a single queued job -- used to keep a
+    first live browser run to one form. It narrows the selection only; every
+    preflight gate and the dry_run routing still apply to that job."""
     s = Summary()
     # Seed today's submission count so the daily cap accounts for
     # applications already submitted earlier today (e.g. an earlier `run`
     # invocation), not just this call.
     submitted_this_run = count_applied_today(conn, _start_of_day_iso(now))
 
-    for job in queued_jobs(conn):
+    for job in queued_jobs(conn, only_job_id):
         # Set once a submit was actually attempted, so pacing happens only after
         # a real browser submission -- and OUTSIDE the guarded region below, so a
         # delay() error can never overwrite an already-committed submit outcome.
@@ -187,7 +192,13 @@ def _build_real_deps(settings, gemini_call):
 
     loop = asyncio.new_event_loop()
     pw = loop.run_until_complete(async_playwright().start())
-    browser_obj = loop.run_until_complete(pw.chromium.launch())
+    # Headed on request so a first live run can actually be watched; slow_mo
+    # makes the fill steps followable by eye. Headless stays the default, so
+    # nothing about an unattended run changes.
+    headed = os.environ.get("APPLY_AGENT_HEADED", "").strip().lower() in ("1", "true", "yes")
+    browser_obj = loop.run_until_complete(
+        pw.chromium.launch(headless=not headed, slow_mo=250 if headed else 0)
+    )
     context = loop.run_until_complete(browser_obj.new_context())
     pages: dict[int, Any] = {}
 
@@ -269,9 +280,13 @@ def main() -> None:
     settings = load_settings(str(REPO_ROOT / "config" / "criteria.yaml"))
     profile = load_profile(str(REPO_ROOT / "resume" / "profile.json"))
 
+    # Optional single-job argument: `python -m apply_agent 46` runs just that
+    # queued job. No argument keeps the previous behaviour, the whole queue.
+    only_job_id = int(sys.argv[1]) if len(sys.argv) > 1 else None
+
     deps, close_deps = _build_real_deps(settings, _gemini_call)
     try:
-        summary = run(conn, settings, profile, deps, datetime.now(timezone.utc))
+        summary = run(conn, settings, profile, deps, datetime.now(timezone.utc), only_job_id)
     finally:
         close_deps()
         conn.close()

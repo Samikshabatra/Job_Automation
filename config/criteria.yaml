@@ -32,7 +32,7 @@ limits:
   max_delay_seconds: 120
 submission:
   dry_run: true                 # back to safe: ATS submit adapters return HTTP 400 (not yet live-validated)
-  browser_enabled: false        # kill switch for live browser-driven submission
+  browser_enabled: true         # browser opens and FILLS real forms; dry_run above is what stops the submit click
   confidence_threshold: 0.85    # minimum field-mapping confidence required before submit
 optimizer:
   max_repair_attempts: 3        # resume-optimizer re-tailors a fabrication-failed job this many times

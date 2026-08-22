@@ -20,11 +20,20 @@ def _now() -> str:
     return datetime.now(timezone.utc).isoformat()
 
 
-def queued_jobs(conn) -> list[Job]:
-    rows = conn.execute(
+def queued_jobs(conn, only_job_id: int | None = None) -> list[Job]:
+    """The submission queue. `only_job_id` narrows it to a single job, which is
+    how the first live browser run is kept to one form instead of the whole
+    queue. It still has to be IN the queue -- this restricts the selection, it
+    does not bypass the status filter or any downstream guard."""
+    sql = (
         "SELECT id,company,title,url,ats_platform,resume_path,fingerprint FROM jobs "
-        "WHERE status IN ('tailored','deferred') ORDER BY id"
-    ).fetchall()
+        "WHERE status IN ('tailored','deferred')"
+    )
+    params: tuple = ()
+    if only_job_id is not None:
+        sql += " AND id = ?"
+        params = (only_job_id,)
+    rows = conn.execute(sql + " ORDER BY id", params).fetchall()
     return [
         Job(r["id"], r["company"], r["title"], r["url"], r["ats_platform"], r["resume_path"], r["fingerprint"])
         for r in rows

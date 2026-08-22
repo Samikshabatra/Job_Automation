@@ -19,6 +19,21 @@ def test_queued_returns_tailored_and_deferred():
     jobs = queued_jobs(c)
     assert [j.company for j in jobs] == ['Acme']
 
+def test_queued_can_be_narrowed_to_one_job():
+    c = _db()
+    c.execute("INSERT INTO jobs(id,company,title,url,ats_platform,resume_path,status) VALUES(1,'Acme','DA','u','greenhouse','/r.pdf','tailored')")
+    c.execute("INSERT INTO jobs(id,company,title,url,ats_platform,resume_path,status) VALUES(2,'Beta','DE','u2','greenhouse','/r2.pdf','tailored')")
+    c.commit()
+    assert [j.id for j in queued_jobs(c)] == [1, 2]
+    assert [j.id for j in queued_jobs(c, 2)] == [2]
+
+def test_narrowing_cannot_pull_in_a_job_outside_the_queue():
+    """only_job_id restricts the selection; it does not bypass the status filter."""
+    c = _db()
+    c.execute("INSERT INTO jobs(id,company,title,url,status) VALUES(5,'Acme','DA','u','skipped')")
+    c.commit()
+    assert queued_jobs(c, 5) == []
+
 def test_record_submitted_writes_application_and_status():
     c = _db()
     c.execute("INSERT INTO jobs(id,company,title,url,resume_path,status) VALUES(7,'Acme','DA','u','/r.pdf','tailored')"); c.commit()
