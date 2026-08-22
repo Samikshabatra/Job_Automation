@@ -58,6 +58,25 @@ CREATE TABLE IF NOT EXISTS applications (
 
 CREATE INDEX IF NOT EXISTS idx_apps_company ON applications(company);
 
+-- One row per recruiting email we have seen. `gmail_msg_id` is UNIQUE so a
+-- re-poll of an overlapping window is idempotent: Gmail is polled on a rolling
+-- window, so the same message WILL be fetched more than once.
+CREATE TABLE IF NOT EXISTS email_events (
+  id             INTEGER PRIMARY KEY AUTOINCREMENT,
+  application_id INTEGER REFERENCES applications(id),
+  gmail_msg_id   TEXT UNIQUE NOT NULL,
+  thread_id      TEXT,
+  received_at    TEXT NOT NULL,
+  from_address   TEXT NOT NULL,
+  from_domain    TEXT,
+  subject        TEXT,
+  classified_as  TEXT,
+  confidence     REAL,
+  created_at     TEXT NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_events_application ON email_events(application_id);
+
 CREATE TABLE IF NOT EXISTS source_health (
   source               TEXT PRIMARY KEY,
   consecutive_failures INTEGER NOT NULL DEFAULT 0,

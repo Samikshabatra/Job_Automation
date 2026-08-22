@@ -16,13 +16,17 @@ export interface TrackerApplication {
   match_score: number | null;
   url: string;
   resume_path: string | null;
+  latest_subject: string | null;
 }
 
 export function listApplicationsWithJob(db: Database): TrackerApplication[] {
   return db
     .prepare(
       `SELECT a.applied_at, a.company, a.title, a.method, a.outcome, a.last_email_at,
-              j.location, j.source, j.match_score, j.url, j.resume_path
+              j.location, j.source, j.match_score, j.url, j.resume_path,
+              (SELECT e.subject FROM email_events e
+                WHERE e.application_id = a.id
+                ORDER BY e.received_at DESC, e.id DESC LIMIT 1) AS latest_subject
          FROM applications a
          JOIN jobs j ON j.id = a.job_id
         ORDER BY a.applied_at DESC, a.id DESC`,

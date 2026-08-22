@@ -12,7 +12,9 @@
     "daily": "tsx src/run/daily.ts",
     "track": "tsx src/run/track.ts",
     "tailor-once": "tsx src/run/tailor_once.ts",
-    "review": ".venv\\Scripts\\python -m apply_agent.__review__"
+    "review": ".venv\\Scripts\\python -m apply_agent.__review__",
+    "inbox": "tsx src/run/inbox.ts",
+    "gmail-auth": "tsx src/run/gmail_auth.ts"
   },
   "keywords": [],
   "author": "",
@@ -22,6 +24,7 @@
     "better-sqlite3": "^13.0.2",
     "dotenv": "^17.4.2",
     "exceljs": "^4.4.0",
+    "googleapis": "^176.0.0",
     "yaml": "^2.9.0",
     "zod": "^4.4.3"
   },
