@@ -1,0 +1,34 @@
+<!doctype html>
+<!--
+  Modern Greenhouse (React) application form. Mirrors what job-boards.greenhouse.io
+  actually serves as of 2026-08: identity lives in `id` and `aria-label`, and
+  almost nothing carries a `name` attribute. Probing a live PhonePe posting found
+  2 of 50 fields named. The older name-based markup is kept in
+  greenhouse_form.html so both shapes stay covered.
+-->
+<html>
+  <body>
+    <form id="application-form">
+      <input type="hidden" id="csrf_token" value="abc123" />
+      <input type="text" id="first_name" aria-label="First Name" required />
+      <input type="text" id="last_name" aria-label="Last Name" required />
+      <input type="text" id="email" aria-label="Email" required />
+      <input type="tel" id="phone" aria-label="Phone" />
+      <input type="text" id="linkedin_url" aria-label="LinkedIn Profile" />
+      <input type="file" id="resume" />
+      <!-- Custom questions: required, company-specific, unmappable from a profile. -->
+      <select id="current_industry" aria-label="Current Industry" required>
+        <option></option><option>Fintech</option>
+      </select>
+      <input type="text" id="expected_ctc" aria-label="Expected CTC (Fixed)" required />
+      <!-- Required via aria only, no `required` attribute. On the live PhonePe
+           form 26 fields are aria-required but only 12 carry `required`. -->
+      <select id="notice_period_q" aria-label="Notice Period" aria-required="true">
+        <option></option><option>30 days</option>
+      </select>
+      <!-- One legacy named field, so mixed forms stay covered. -->
+      <input type="text" name="notice_period" aria-label="Notice Period" />
+      <button type="submit">Submit application</button>
+    </form>
+  </body>
+</html>
