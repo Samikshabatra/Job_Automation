@@ -7,7 +7,7 @@
  * `null` is the signal to spend a call.
  */
 
-export type Outcome = 'rejected' | 'interview' | 'screening' | 'acknowledged';
+export type Outcome = 'rejected' | 'offer' | 'interview' | 'screening' | 'acknowledged';
 
 export interface EmailInput {
   subject: string;
@@ -33,6 +33,13 @@ export const RULE_CONFIDENCE = 0.9;
  * ones or the most common email in the inbox is misread as the best news in
  * it. Same reasoning puts screening ahead of acknowledgement: an assessment
  * mail often opens by thanking you for applying.
+ *
+ * `offer` sits between the two for the same reason in the other direction: an
+ * offer mail nearly always references the interview rounds that produced it
+ * ("following your final interview..."), so testing interview first would
+ * downgrade the best news in the inbox to a routine one. It stays BELOW
+ * rejection, because a rejection is commonly phrased as the offer it is
+ * declining to make ("unable to extend an offer").
  */
 const RULES: { outcome: Outcome; patterns: RegExp[] }[] = [
   {
@@ -46,6 +53,19 @@ const RULES: { outcome: Outcome; patterns: RegExp[] }[] = [
       /\bnot (?:been )?select(?:ed|ing)\b/,
       /\bpursue other candidates\b/,
       /\bno longer under consideration\b/,
+    ],
+  },
+  {
+    outcome: 'offer',
+    patterns: [
+      /\bpleased to offer\b/,
+      /\bdelighted to offer\b/,
+      /\bhappy to offer\b/,
+      /\boffer of employment\b/,
+      /\boffer letter\b/,
+      /\bjob offer\b/,
+      /\bextend(?:ing)? (?:you )?an offer\b/,
+      /\bwelcome to the team\b/,
     ],
   },
   {

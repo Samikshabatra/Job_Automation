@@ -29,6 +29,31 @@ describe('classifyEmail', () => {
     expect(sub('Your application has been received').outcome).toBe('acknowledged');
   });
 
+  it('reads an offer', () => {
+    expect(sub('We are pleased to offer you the role').outcome).toBe('offer');
+    expect(sub('Offer letter - Backend Engineer').outcome).toBe('offer');
+    expect(sub('Next steps', 'We would like to extend an offer of employment').outcome).toBe('offer');
+    expect(sub('Congratulations', 'Welcome to the team!').outcome).toBe('offer');
+  });
+
+  it('rejects BEFORE it reads offer words', () => {
+    // A rejection routinely names the offer it is declining to make.
+    const r = sub(
+      'Application update',
+      'Unfortunately we are unable to extend an offer at this time.',
+    );
+    expect(r.outcome).toBe('rejected');
+  });
+
+  it('reads an offer BEFORE the interview it followed', () => {
+    // An offer mail almost always references the interview rounds behind it.
+    const r = sub(
+      'Great news',
+      'Following your final interview, we are pleased to offer you the position.',
+    );
+    expect(r.outcome).toBe('offer');
+  });
+
   it('rejects BEFORE it looks for interview words', () => {
     // The single most common misclassification: a rejection that mentions the
     // interview it is declining to offer. Ordering is the whole defence.
