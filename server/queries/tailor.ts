@@ -37,28 +37,64 @@ export function listTailorRuns(db: Database, limit = 50): TailorRunRow[] {
   return db.prepare(`${SELECT} ORDER BY t.id DESC LIMIT ?`).all(limit) as TailorRunRow[];
 }
 
+interface StoredBullet { id?: unknown; text?: unknown }
+interface StoredEntry { id?: unknown; role?: unknown; org?: unknown; bullets?: unknown }
+
 /**
  * Turns a stored before/after pair into the side-by-side the screen renders.
  *
+ * One section per experience entry, headed by the role and organisation the
+ * bullets belong to -- the question a person has is "what did it do to my
+ * Acme bullets", not "what is in the entries key". The two sides are joined on
+ * bullet id, because the tailored payload carries only ids and rewritten text.
+ *
+ * Entries the tailor did not select are left out entirely rather than shown
+ * with an empty right-hand column, which would read as "it deleted this job".
+ *
  * Tolerant of shape on purpose: these blobs are whatever the tailor wrote at
- * the time, and a schema change six months from now must degrade to "no
- * sections" rather than break the page for every historical run.
+ * the time, and a schema change later must degrade to "no sections" rather
+ * than break the page for every historical run.
  */
 export function diffSections(originalJson: string, tailoredJson: string): TailorSection[] {
   const original = safeParse(originalJson);
   const tailored = safeParse(tailoredJson);
   if (!original || !tailored) return [];
 
-  const headings = new Set([...Object.keys(original), ...Object.keys(tailored)]);
+  const sourceEntries = asEntries(original.entries);
   const sections: TailorSection[] = [];
 
-  for (const heading of headings) {
-    const o = toLines(original[heading]);
-    const t = toLines(tailored[heading]);
-    if (o.length === 0 && t.length === 0) continue;
-    const before = new Set(o);
-    sections.push({ heading, original: o, tailored: t, added: t.filter((l) => !before.has(l)) });
+  for (const tailoredEntry of asEntries(tailored.entries)) {
+    const source = sourceEntries.find((e) => e.id === tailoredEntry.id);
+    if (!source) continue;
+
+    const sourceText = new Map<string, string>();
+    for (const b of asBullets(source.bullets)) {
+      if (b.id) sourceText.set(b.id, b.text);
+    }
+
+    const tailoredLines = asBullets(tailoredEntry.bullets).map((b) => b.text);
+    // Only the source bullets this pass actually used, in the tailored order,
+    // so the two columns line up row for row.
+    const originalLines = asBullets(tailoredEntry.bullets)
+      .map((b) => (b.id ? sourceText.get(b.id) : undefined))
+      .filter((t): t is string => t !== undefined);
+
+    const heading = [source.role, source.org].filter(Boolean).join(' - ') || String(source.id ?? 'Experience');
+    const unchanged = new Set(originalLines);
+
+    sections.push({
+      heading,
+      original: originalLines,
+      tailored: tailoredLines,
+      added: tailoredLines.filter((l) => !unchanged.has(l)),
+    });
   }
+
+  const summary = typeof tailored.summary === 'string' ? tailored.summary.trim() : '';
+  if (summary) {
+    sections.push({ heading: 'Summary', original: [], tailored: [summary], added: [summary] });
+  }
+
   return sections;
 }
 
@@ -71,19 +107,23 @@ function safeParse(s: string): Record<string, unknown> | null {
   }
 }
 
-function toLines(v: unknown): string[] {
-  if (typeof v === 'string') return v.split(/\r?\n/).filter(Boolean);
-  if (Array.isArray(v)) {
-    return v.flatMap((item) => {
-      if (typeof item === 'string') return [item];
-      if (item && typeof item === 'object') {
-        const o = item as Record<string, unknown>;
-        const bullets = Array.isArray(o.bullets) ? (o.bullets as unknown[]).map(String) : [];
-        const label = [o.title, o.company, o.role, o.name].filter(Boolean).join(' - ');
-        return label ? [label, ...bullets] : bullets;
-      }
-      return [];
-    });
-  }
-  return [];
+function asEntries(v: unknown): { id?: string; role?: string; org?: string; bullets?: unknown }[] {
+  if (!Array.isArray(v)) return [];
+  return v.filter((e): e is StoredEntry => Boolean(e) && typeof e === 'object').map((e) => ({
+    id: typeof e.id === 'string' ? e.id : undefined,
+    role: typeof e.role === 'string' ? e.role : undefined,
+    org: typeof e.org === 'string' ? e.org : undefined,
+    bullets: e.bullets,
+  }));
+}
+
+function asBullets(v: unknown): { id?: string; text: string }[] {
+  if (!Array.isArray(v)) return [];
+  return v
+    .filter((b): b is StoredBullet => Boolean(b) && typeof b === 'object')
+    .map((b) => ({
+      id: typeof b.id === 'string' ? b.id : undefined,
+      text: typeof b.text === 'string' ? b.text : '',
+    }))
+    .filter((b) => b.text !== '');
 }

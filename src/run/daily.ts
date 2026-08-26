@@ -11,6 +11,7 @@ import {
   markSubmitted, setJobResume, setJobScore, updateJobStatus,
 } from '../db/jobs.js';
 import { insertApplication } from '../db/applications.js';
+import { recordTailorRun } from '../db/tailorRuns.js';
 import { recordSourceOutcome, listUnhealthySources } from '../db/health.js';
 import type { BoardRow, JobRow } from '../db/types.js';
 import { normalizeTitle } from '../normalize/title.js';
@@ -182,6 +183,13 @@ export async function runDaily(deps: RunDeps): Promise<RunReport> {
   }
 
   // 9. Tailor
+  //
+  // The dashboard sets JOBPILOT_RUN_ID when it spawns this run, so each
+  // tailoring pass can be tied back to the run row it belongs to. Absent (a
+  // plain `npm run daily`) the passes are still recorded, against no run.
+  const rawRunId = (process.env.JOBPILOT_RUN_ID ?? '').trim();
+  const runId = /^\d+$/.test(rawRunId) ? Number(rawRunId) : null;
+
   let failures = 0;
   for (const job of survivors) {
     const jdSkills = extractSkills(job.jd_text ?? '', resume.skills);
@@ -195,6 +203,13 @@ export async function runDaily(deps: RunDeps): Promise<RunReport> {
         tailored, resume.experience, Object.keys(resume.skills), job.title,
       );
       if (!check.ok) {
+        // Recorded BEFORE the early return: a rejected tailoring is the single
+        // most useful thing on the tailoring screen, because it is the one a
+        // human has to make a judgement about.
+        recordTailorRun(db, {
+          jobId: job.id, runId, source: resume.experience, tailored,
+          verdict: 'fail', offending: check.offending, resumePath: null,
+        });
         updateJobStatus(db, job.id, 'failed', `fabrication check failed: ${check.offending.join(' | ')}`);
         failures++;
         continue;
@@ -206,6 +221,10 @@ export async function runDaily(deps: RunDeps): Promise<RunReport> {
         out,
       );
       setJobResume(db, job.id, out);
+      recordTailorRun(db, {
+        jobId: job.id, runId, source: resume.experience, tailored,
+        verdict: 'pass', offending: [], resumePath: out,
+      });
       report.tailored++;
     } catch (err) {
       updateJobStatus(db, job.id, 'failed', err instanceof Error ? err.message : String(err));
