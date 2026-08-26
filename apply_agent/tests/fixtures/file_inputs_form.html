@@ -1,0 +1,25 @@
+<!doctype html>
+<html>
+  <head><title>Apply</title></head>
+  <body>
+    <!--
+      The file inputs of a live Ashby posting, in their real DOM order. The
+      resume field is NOT first: the board puts its own "autofill from resume"
+      helper above the form, so an agent that takes the first file input feeds
+      the helper and leaves the actual Resume field empty.
+    -->
+    <form>
+      <!-- Ashby's autofill helper. No name, no id, no label. -->
+      <div>
+        <span>Autofill from resume</span>
+        <input type="file" />
+      </div>
+
+      <label for="_systemfield_resume">Resume</label>
+      <input type="file" id="_systemfield_resume" aria-required="true" />
+
+      <label for="b1890667-a914-4163-b3c1-c5b694fd412c">Additional Attachments</label>
+      <input type="file" id="b1890667-a914-4163-b3c1-c5b694fd412c" />
+    </form>
+  </body>
+</html>

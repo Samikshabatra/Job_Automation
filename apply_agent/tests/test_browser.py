@@ -259,3 +259,110 @@ async def test_placeholder_still_used_as_the_last_readable_source(labelled_field
     # Demoted, not discarded. On a form with no labels at all it is the only
     # human-readable thing left.
     assert labelled_fields["q_placeholder_only"].label == "Notice period in days"
+
+
+FILE_INPUTS = pathlib.Path(__file__).parent / "fixtures" / "file_inputs_form.html"
+
+
+async def _file_input_page(body: str):
+    pw = await async_playwright().start()
+    browser = await pw.chromium.launch()
+    ctx = await browser.new_context()
+    page = await ctx.new_page()
+    await page.route("**/*", lambda route: route.fulfill(body=body, content_type="text/html"))
+    await page.goto("https://jobs.ashbyhq.com/acme/abc/application")
+    return pw, browser, page
+
+
+async def _uploaded_names(page):
+    """The filename held by each file input, in DOM order."""
+    return await page.evaluate(
+        "() => Array.from(document.querySelectorAll('input[type=file]'))"
+        ".map(e => e.files && e.files[0] ? e.files[0].name : '')"
+    )
+
+
+@pytest.mark.asyncio
+async def test_resume_goes_to_the_resume_field_not_the_first_file_input(tmp_path):
+    # The bug this replaces: `input[type=file]` .first fed Ashby's "autofill
+    # from resume" helper, which sits above the form. The resume was uploaded
+    # every time -- into the wrong control -- and the required Resume field
+    # stayed empty, forcing the whole application to manual review.
+    cv = tmp_path / "resume.pdf"
+    cv.write_bytes(b"%PDF-1.4 fake")
+
+    pw, browser, page = await _file_input_page(FILE_INPUTS.read_text())
+    try:
+        await fill_form(page, {}, resume_path=str(cv))
+        names = await _uploaded_names(page)
+        assert names[0] == ""            # the autofill helper is left alone
+        assert names[1] == "resume.pdf"  # the Resume field gets it
+        assert names[2] == ""            # Additional Attachments is left alone
+    finally:
+        await browser.close(); await pw.stop()
+
+
+@pytest.mark.asyncio
+async def test_a_lone_unlabelled_file_input_still_receives_the_resume(tmp_path):
+    # Plenty of forms have exactly one file input and no label worth reading.
+    # With nothing to confuse it for, it is the resume field.
+    cv = tmp_path / "resume.pdf"
+    cv.write_bytes(b"%PDF-1.4 fake")
+
+    body = "<html><body><form><input type='file' /></form></body></html>"
+    pw, browser, page = await _file_input_page(body)
+    try:
+        await fill_form(page, {}, resume_path=str(cv))
+        assert (await _uploaded_names(page)) == ["resume.pdf"]
+    finally:
+        await browser.close(); await pw.stop()
+
+
+@pytest.mark.asyncio
+async def test_nothing_is_uploaded_when_no_input_looks_like_a_resume(tmp_path):
+    # Two candidates, neither of them a resume field. Guessing would attach the
+    # CV to a cover-letter or portfolio slot; leaving it forces manual review,
+    # which is the correct outcome.
+    cv = tmp_path / "resume.pdf"
+    cv.write_bytes(b"%PDF-1.4 fake")
+
+    body = ("<html><body><form>"
+            "<label for='a'>Cover Letter</label><input type='file' id='a' />"
+            "<label for='b'>Portfolio</label><input type='file' id='b' />"
+            "</form></body></html>")
+    pw, browser, page = await _file_input_page(body)
+    try:
+        await fill_form(page, {}, resume_path=str(cv))
+        assert (await _uploaded_names(page)) == ["", ""]
+    finally:
+        await browser.close(); await pw.stop()
+
+
+@pytest.mark.asyncio
+async def test_a_cv_labelled_field_is_recognised(tmp_path):
+    cv = tmp_path / "resume.pdf"
+    cv.write_bytes(b"%PDF-1.4 fake")
+
+    body = ("<html><body><form>"
+            "<input type='file' />"
+            "<label for='c'>Upload your CV</label><input type='file' id='c' />"
+            "</form></body></html>")
+    pw, browser, page = await _file_input_page(body)
+    try:
+        await fill_form(page, {}, resume_path=str(cv))
+        assert (await _uploaded_names(page)) == ["", "resume.pdf"]
+    finally:
+        await browser.close(); await pw.stop()
+
+
+@pytest.mark.asyncio
+async def test_a_form_with_no_file_input_is_not_an_error(tmp_path):
+    cv = tmp_path / "resume.pdf"
+    cv.write_bytes(b"%PDF-1.4 fake")
+
+    body = "<html><body><form><input name='email' type='email' /></form></body></html>"
+    pw, browser, page = await _file_input_page(body)
+    try:
+        await fill_form(page, {}, resume_path=str(cv))  # must not raise
+    finally:
+        await browser.close(); await pw.stop()

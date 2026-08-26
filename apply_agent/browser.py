@@ -130,9 +130,89 @@ async def fill_form(page, values: dict, resume_path) -> None:
         if await loc.count():
             await loc.first.fill(str(value))
     if resume_path:
-        up = page.locator("input[type=file]")
-        if await up.count():
-            await up.first.set_input_files(resume_path)
+        index = await _resume_input_index(page)
+        if index is not None:
+            await page.locator("input[type=file]").nth(index).set_input_files(resume_path)
+
+
+# Describes each file input by whatever text identifies it, in DOM order, so
+# the resume can be sent to the right one. Same label precedence as
+# _READ_FIELDS_JS: the visible label is the only thing that distinguishes a
+# resume slot from a cover-letter slot on a form whose ids are UUIDs.
+_FILE_INPUTS_JS = """
+() => {
+  const clean = (s) => (s || '').replace(/\\s+/g, ' ').trim();
+  return Array.from(document.querySelectorAll('input[type=file]')).map((el) => {
+    const id = el.getAttribute('id') || '';
+    let label = '';
+    if (id) {
+      try {
+        const l = document.querySelector(`label[for="${CSS.escape(id)}"]`);
+        label = l ? clean(l.textContent) : '';
+      } catch (e) { label = ''; }
+    }
+    if (!label) {
+      const ref = el.getAttribute('aria-labelledby');
+      if (ref) {
+        label = clean(ref.split(/\\s+/)
+          .map((x) => { const n = document.getElementById(x); return n ? n.textContent : ''; })
+          .join(' '));
+      }
+    }
+    if (!label) {
+      const wrap = el.closest('label');
+      label = wrap ? clean(wrap.textContent) : '';
+    }
+    return `${label} ${el.getAttribute('name') || ''} ${id} ${el.getAttribute('aria-label') || ''}`.toLowerCase();
+  });
+}
+"""
+
+# A file input that IS the resume slot.
+_RESUME_WORDS = ("resume", "resumé", "cv", "curriculum")
+
+# A file input that takes some other document. An Ashby posting puts its own
+# "autofill from resume" helper above the form and a "Additional Attachments"
+# slot below it, so "contains the word resume" is not enough on its own.
+_NOT_RESUME_WORDS = (
+    "cover", "additional", "attachment", "portfolio", "transcript",
+    "autofill", "auto-fill", "photo", "certificate", "sample",
+)
+
+
+async def _resume_input_index(page) -> int | None:
+    """Which file input should receive the resume, or None to upload nothing.
+
+    Taking the first file input on the page -- as this once did -- fed Ashby's
+    "autofill from resume" helper, which sits ABOVE the form. The resume was
+    uploaded on every run, into the wrong control, while the required Resume
+    field stayed empty and forced the application to manual review.
+
+    None is a real answer. When several inputs are present and none of them
+    identifies itself as the resume slot, attaching the CV to a cover-letter or
+    portfolio field is worse than leaving it: a blank required field forces a
+    human to look, a wrong attachment gets submitted.
+    """
+    try:
+        descriptions = await page.evaluate(_FILE_INPUTS_JS)
+    except Exception:
+        return None
+
+    if not descriptions:
+        return None
+
+    for i, text in enumerate(descriptions):
+        if any(w in text for w in _NOT_RESUME_WORDS):
+            continue
+        if any(w in text for w in _RESUME_WORDS):
+            return i
+
+    # Exactly one input and nothing claiming to be something else: there is
+    # nothing to confuse it with, so it is the resume field.
+    if len(descriptions) == 1 and not any(w in descriptions[0] for w in _NOT_RESUME_WORDS):
+        return 0
+
+    return None
 
 
 async def submit_form(page) -> None:
