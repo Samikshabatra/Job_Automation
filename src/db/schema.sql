@@ -83,3 +83,64 @@ CREATE TABLE IF NOT EXISTS source_health (
   last_ok_at           TEXT,
   last_error_at        TEXT
 );
+
+-- ---------------------------------------------------------------------------
+-- UI-facing tables. Added for the JobPilot dashboard.
+--
+-- All three are append-only records of things the pipeline already did; none
+-- of them is read by the pipeline itself. That is deliberate: the dashboard
+-- must never become load-bearing for a run. Dropping these tables would cost
+-- history and nothing else.
+-- ---------------------------------------------------------------------------
+
+-- One row per pipeline invocation, whoever started it. `kind` is the run type
+-- the JobRunner was asked for; `summary_json` is a free-form blob so a new
+-- counter in RunReport does not need a migration.
+CREATE TABLE IF NOT EXISTS runs (
+  id           INTEGER PRIMARY KEY AUTOINCREMENT,
+  kind         TEXT NOT NULL,
+  started_at   TEXT NOT NULL,
+  finished_at  TEXT,
+  exit_code    INTEGER,
+  dry_run      INTEGER NOT NULL DEFAULT 1,
+  summary_json TEXT,
+  error        TEXT
+);
+
+CREATE INDEX IF NOT EXISTS idx_runs_started ON runs(started_at DESC);
+
+-- One row per tailoring pass, so the AI Tailoring screen can show the real
+-- before/after instead of re-running Gemini to redraw a page. `similarity`
+-- and `ai_confidence` are the numbers verify.ts already computes -- stored,
+-- not recomputed, because the verdict that mattered is the one taken at the
+-- time the resume was actually rendered.
+CREATE TABLE IF NOT EXISTS tailor_runs (
+  id            INTEGER PRIMARY KEY AUTOINCREMENT,
+  job_id        INTEGER NOT NULL REFERENCES jobs(id),
+  run_id        INTEGER REFERENCES runs(id),
+  original_json TEXT NOT NULL,
+  tailored_json TEXT NOT NULL,
+  ai_confidence REAL,
+  similarity    REAL,
+  verdict       TEXT,
+  resume_path   TEXT,
+  created_at    TEXT NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_tailor_job ON tailor_runs(job_id, created_at DESC);
+
+-- Step-level trace from the apply agent. Feeds the live Apply Agent panel and
+-- the activity feed. `confidence` is the agent's field-mapping confidence at
+-- that step, null for steps where the notion does not apply.
+CREATE TABLE IF NOT EXISTS agent_events (
+  id         INTEGER PRIMARY KEY AUTOINCREMENT,
+  run_id     INTEGER REFERENCES runs(id),
+  job_id     INTEGER REFERENCES jobs(id),
+  step       TEXT NOT NULL,
+  detail     TEXT,
+  confidence REAL,
+  created_at TEXT NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_agent_events_run ON agent_events(run_id, id);
+CREATE INDEX IF NOT EXISTS idx_agent_events_created ON agent_events(created_at DESC);
