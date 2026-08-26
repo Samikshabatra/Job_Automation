@@ -1,5 +1,5 @@
 import type { SubmitAdapter, SubmitPayload } from './types.js';
-import { postMultipart } from './greenhouse.js';
+import { postMultipart } from './multipart.js';
 import type { JobRow } from '../db/types.js';
 import type { Profile } from '../tailor/resume.js';
 import { parseApplyUrl } from '../discovery/urlparse.js';

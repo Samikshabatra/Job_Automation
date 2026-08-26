@@ -11,80 +11,65 @@ const profile: Profile = {
 
 function job(over: Partial<JobRow>): JobRow {
   return {
-    id: 1, fingerprint: 'fp', board_id: 1, source: 'greenhouse', source_job_id: '4012345',
-    url: 'https://boards.greenhouse.io/acme/jobs/4012345', company: 'Acme',
+    id: 1, fingerprint: 'fp', board_id: 1, source: 'lever', source_job_id: 'abc-123',
+    url: 'https://jobs.lever.co/acme/abc-123', company: 'Acme',
     title: 'Data Analyst', norm_title: 'data analyst', location: 'Remote', norm_location: 'remote',
     posted_at: null, first_seen_at: '2026-08-01T00:00:00.000Z', jd_text: 'jd',
-    ats_platform: 'greenhouse', min_years: 0, match_score: 80, status: 'tailored',
+    ats_platform: 'lever', min_years: 0, match_score: 80, status: 'tailored',
     status_reason: null, resume_path: 'C:/resumes/a.pdf', submitted_at: null,
     created_at: '2026-08-01T00:00:00.000Z',
     ...over,
   } as JobRow;
 }
 
-describe('greenhouse payload', () => {
-  const payload = adapterFor('greenhouse')!.buildPayload(job({}), profile, 'C:/resumes/a.pdf');
-
-  it('targets the job-board application endpoint', () => {
-    expect(payload.endpoint).toContain('greenhouse.io');
-    expect(payload.endpoint).toContain('4012345');
-  });
-
-  it('splits the name into first and last', () => {
-    expect(payload.fields.first_name).toBe('Example');
-    expect(payload.fields.last_name).toBe('Candidate');
-  });
-
-  it('carries the applicant email and phone', () => {
-    expect(payload.fields.email).toBe('example.apply@gmail.com');
-    expect(payload.fields.phone).toBe('+91 90000 00000');
-  });
-
-  it('attaches the tailored resume', () => {
-    expect(payload.files).toEqual([{ field: 'resume', path: 'C:/resumes/a.pdf' }]);
-  });
-});
-
 describe('lever payload', () => {
-  const leverJob = job({
-    ats_platform: 'lever', source_job_id: 'abc-123',
-    url: 'https://jobs.lever.co/beta/abc-123',
-  });
-  const payload = adapterFor('lever')!.buildPayload(leverJob, profile, 'C:/resumes/a.pdf');
+  const payload = adapterFor('lever')!.buildPayload(job({}), profile, 'C:/resumes/a.pdf');
 
-  it('targets the lever apply endpoint for the posting', () => {
-    expect(payload.endpoint).toBe('https://jobs.lever.co/beta/abc-123/apply');
+  it('targets the apply endpoint for the posting', () => {
+    expect(payload.endpoint).toBe('https://jobs.lever.co/acme/abc-123/apply');
   });
 
   it('uses lever field names', () => {
     expect(payload.fields.name).toBe('Example Candidate');
     expect(payload.fields.email).toBe('example.apply@gmail.com');
+    expect(payload.fields['urls[LinkedIn]']).toBe('https://linkedin.com/in/example');
+  });
+
+  it('attaches exactly one resume file', () => {
+    expect(payload.files).toHaveLength(1);
+    expect(payload.files[0]!.field).toBe('resume');
+  });
+
+  it('never emits an empty email field', () => {
+    expect(payload.fields.email).toBeTruthy();
   });
 });
 
 describe('adapterFor', () => {
-  it('returns an adapter for each supported platform', () => {
-    for (const p of ['greenhouse', 'lever', 'ashby', 'workable'] as const) {
-      expect(adapterFor(p)).not.toBeNull();
+  it('returns the lever adapter, the one HTTP path that remains', () => {
+    expect(adapterFor('lever')).not.toBeNull();
+  });
+
+  /**
+   * Each of these posted at something that cannot accept an application, and
+   * none had ever produced one:
+   *
+   *   greenhouse  boards.greenhouse.io/{token}/jobs/{id} is a web page; it
+   *               answers GET with a 301 to the employer's careers site
+   *   ashby       flat multipart at a GraphQL endpoint, which rejects any
+   *               request with no `query` body
+   *   workable    the employer API, with no Authorization header
+   *
+   * Null is the contract that routes those jobs to the browser agent, so it is
+   * worth asserting rather than leaving implicit.
+   */
+  it('returns null for the platforms that have no HTTP path', () => {
+    for (const p of ['greenhouse', 'ashby', 'workable'] as const) {
+      expect(adapterFor(p)).toBeNull();
     }
   });
 
-  it('returns null for an unsupported platform', () => {
+  it('returns null for a platform it has never heard of', () => {
     expect(adapterFor('taleo' as never)).toBeNull();
-  });
-});
-
-describe('every adapter', () => {
-  it('never emits an empty email field', () => {
-    for (const p of ['greenhouse', 'lever', 'ashby', 'workable'] as const) {
-      const payload = adapterFor(p)!.buildPayload(job({ ats_platform: p }), profile, 'C:/r.pdf');
-      expect(payload.fields.email ?? payload.fields['cards[0][fields][0][value]']).toBeTruthy();
-    }
-  });
-
-  it('always attaches exactly one resume file', () => {
-    for (const p of ['greenhouse', 'lever', 'ashby', 'workable'] as const) {
-      expect(adapterFor(p)!.buildPayload(job({ ats_platform: p }), profile, 'C:/r.pdf').files).toHaveLength(1);
-    }
   });
 });

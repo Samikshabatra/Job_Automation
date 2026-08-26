@@ -6,7 +6,7 @@ import type { TailorResponse } from '../../src/tailor/llm.js';
 
 const SOURCE: ExperienceEntry[] = [
   {
-    id: 'e1', role: 'Data Analyst', org: 'Acme', start: '2023-01', end: 'Present',
+    id: 'e1', kind: 'work', role: 'Data Analyst', org: 'Acme', start: '2023-01', end: 'Present',
     bullets: [
       { id: 'b1', text: 'Built reporting pipelines in Python and SQL for finance', skills: ['python', 'sql'] },
       { id: 'b2', text: 'Automated weekly reconciliation saving eight hours', skills: [] },

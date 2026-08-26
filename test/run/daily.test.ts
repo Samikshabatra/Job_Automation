@@ -41,6 +41,25 @@ beforeEach(() => {
   upsertBoard(db, { atsPlatform: 'greenhouse', boardToken: 'acme', companyName: 'Acme', discoveredVia: 'manual' });
 });
 
+/**
+ * `deps` seeds a Greenhouse job, which no longer has an HTTP adapter. Lever
+ * still does, so the submit path is exercised through a Lever posting.
+ */
+function leverDeps(over: Partial<RunDeps> = {}) {
+  return deps({
+    fetchBoard: async () => ({
+      ok: true,
+      jobs: [{
+        sourceJobId: 'abc123', url: 'https://jobs.lever.co/acme/abc123',
+        company: 'Acme', title: 'Data Analyst', location: 'Bengaluru',
+        postedAt: '2026-07-31T00:00:00.000Z',
+        jdText: 'Fresher role. SQL required. 0-2 years.', atsPlatform: 'lever' as const,
+      }],
+    }),
+    ...over,
+  });
+}
+
 function deps(over: Partial<RunDeps> = {}) {
   return {
     db, criteria, blocklist: [], companies: [], projectRoot: root,
@@ -84,11 +103,26 @@ describe('runDaily', () => {
     expect(report.submitted).toBe(0);
   });
 
-  it('submits when dry_run is disabled', async () => {
-    const d = deps({ criteria: { ...criteria, submission: { dry_run: false } } });
+  it('submits over HTTP when dry_run is disabled and the platform has an adapter', async () => {
+    const d = leverDeps({ criteria: { ...criteria, submission: { dry_run: false } } });
     const report = await runDaily(d);
     expect(d.submit).toHaveBeenCalledOnce();
     expect(report.submitted).toBe(1);
+  });
+
+  it('hands a job with no HTTP adapter to the browser agent, still queued', async () => {
+    // Greenhouse has no HTTP path -- its adapter posted at a web page and was
+    // removed. The job must stay in a status apply_agent.db.queued_jobs
+    // selects, or the only component that can apply to it never sees it.
+    const d = deps({ criteria: { ...criteria, submission: { dry_run: false } } });
+    const report = await runDaily(d);
+
+    expect(d.submit).not.toHaveBeenCalled();
+    expect(report.outcomes['browser-queue']).toBe(1);
+    expect(report.submitted).toBe(0);
+
+    const row = db.prepare("SELECT status FROM jobs WHERE company = 'Acme'").get() as { status: string };
+    expect(['tailored', 'deferred']).toContain(row.status);
   });
 
   it('filters out a job requiring too many years before tailoring', async () => {
@@ -161,14 +195,17 @@ describe('runDaily', () => {
       jobId: seedId, company: 'Acme', title: 'Backend Engineer', method: 'api', emailUsed: null,
     });
 
+    // Driven through Lever: the reconsideration being tested is the deferred
+    // job reaching the submit step again, and Lever is the platform that still
+    // has an HTTP path to reach.
     const capped = { ...criteria, submission: { dry_run: false }, limits: { ...criteria.limits, per_company_open_applications: 1 } };
-    const first = await runDaily(deps({ criteria: capped }));
+    const first = await runDaily(leverDeps({ criteria: capped }));
     expect(first.outcomes.deferred).toBe(1);
     expect(first.submitted).toBe(0);
     expect(listJobsByStatus(db, 'deferred')).toHaveLength(1);
 
     const roomy = { ...criteria, submission: { dry_run: false } };
-    const d = deps({ criteria: roomy });
+    const d = leverDeps({ criteria: roomy });
     const second = await runDaily(d);
     expect(second.submitted).toBe(1);
     expect(d.submit).toHaveBeenCalledOnce();

@@ -269,8 +269,14 @@ export async function runDaily(deps: RunDeps): Promise<RunReport> {
 
     const adapter = adapterFor(job.ats_platform!);
     if (!adapter) {
-      updateJobStatus(db, job.id, 'skipped', `no adapter for ${job.ats_platform}`);
-      bump(report.outcomes, 'no-adapter');
+      // No HTTP path for this platform, so the browser agent takes it.
+      //
+      // The status is deliberately LEFT ALONE. Writing 'skipped' here (as this
+      // once did) is terminal, and `apply_agent.db.queued_jobs` selects
+      // 'tailored'/'deferred' -- so every Greenhouse and Ashby job, which is
+      // almost all of them, was being drained out of the queue before the only
+      // component that can actually apply to it ever saw it.
+      bump(report.outcomes, 'browser-queue');
       continue;
     }
 
