@@ -24,7 +24,8 @@ const PIPELINE_HEADERS = [
 
 const APPLICATION_HEADERS = [
   'Applied date', 'Company', 'Role', 'Location', 'Source', 'Match score',
-  'Method', 'Resume', 'Job link', 'Status', 'Last contact', 'Days since applied',
+  'Method', 'Resume', 'Job link', 'Status', 'Last contact', 'Latest email subject',
+  'Days since applied',
 ] as const;
 
 /** A cell value that Excel renders as a clickable link, or a plain blank. */
@@ -65,7 +66,7 @@ export function buildWorkbook(db: Database, now: Date = new Date()): ExcelJS.Wor
     const row = apps.addRow([
       a.applied_at, a.company, a.title, a.location, a.source, a.match_score,
       a.method, link(a.resume_path, 'PDF'), link(a.url, 'Open'),
-      a.outcome, a.last_email_at, daysSince(a.applied_at, now),
+      a.outcome, a.last_email_at, a.latest_subject ?? '', daysSince(a.applied_at, now),
     ]);
     const fill = OUTCOME_FILL[a.outcome];
     if (fill) fillCell(row.getCell(statusCol), fill);

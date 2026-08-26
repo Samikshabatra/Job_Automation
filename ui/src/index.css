@@ -1,0 +1,112 @@
+@import "tailwindcss";
+
+/*
+ * The palette is deliberately narrow. Violet marks one thing only -- the
+ * active or primary state -- so that when the agent is running, the eye finds
+ * it instantly. Status colours are semantic and never decorative: green means
+ * an employer said yes, rose means no. Everything else is greyscale, which is
+ * what lets a screen of 4,000 rows stay readable.
+ */
+@theme {
+  --color-ground: #0b0b10;
+  --color-surface: #14141c;
+  --color-raised: #1b1b26;
+  --color-hairline: #262633;
+  --color-hairline-strong: #33334a;
+
+  --color-ink: #e8e8f0;
+  --color-ink-dim: #a0a0b8;
+  --color-ink-faint: #6e6e88;
+
+  --color-violet: #7c5cff;
+  --color-violet-dim: #5b41c9;
+  --color-violet-wash: #7c5cff1a;
+
+  --color-good: #34d399;
+  --color-warn: #fbbf24;
+  --color-bad: #fb7185;
+  --color-info: #38bdf8;
+
+  --font-display: "Space Grotesk", ui-sans-serif, system-ui, sans-serif;
+  --font-sans: "Inter", ui-sans-serif, system-ui, sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, "SF Mono", monospace;
+}
+
+@layer base {
+  html {
+    background: var(--color-ground);
+    color-scheme: dark;
+  }
+
+  body {
+    margin: 0;
+    background: var(--color-ground);
+    color: var(--color-ink);
+    font-family: var(--font-sans);
+    -webkit-font-smoothing: antialiased;
+  }
+
+  h1, h2, h3, h4 {
+    font-family: var(--font-display);
+    letter-spacing: -0.02em;
+  }
+
+  /* Every number in this product is a measurement. Mono keeps columns of
+     scores and timestamps aligned, and makes a score legible as a value
+     rather than as a word. */
+  .tabular {
+    font-family: var(--font-mono);
+    font-variant-numeric: tabular-nums;
+  }
+
+  :focus-visible {
+    outline: 2px solid var(--color-violet);
+    outline-offset: 2px;
+    border-radius: 3px;
+  }
+
+  ::-webkit-scrollbar { width: 10px; height: 10px; }
+  ::-webkit-scrollbar-track { background: transparent; }
+  ::-webkit-scrollbar-thumb {
+    background: var(--color-hairline-strong);
+    border-radius: 999px;
+    border: 3px solid var(--color-ground);
+  }
+}
+
+@layer utilities {
+  /* The eyebrow label used above every panel title. Small, spaced, dim --
+     it names the region without competing with the data inside it. */
+  .eyebrow {
+    font-family: var(--font-mono);
+    font-size: 10px;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: var(--color-ink-faint);
+  }
+
+  .panel {
+    background: var(--color-surface);
+    border: 1px solid var(--color-hairline);
+    border-radius: 14px;
+  }
+
+  .hairline { border-color: var(--color-hairline); }
+}
+
+/* The log stream on the agent and overview screens. Fades in a line at a time
+   so a fast pipeline does not flicker. Suppressed for reduced motion. */
+@keyframes line-in {
+  from { opacity: 0; transform: translateY(3px); }
+  to { opacity: 1; transform: none; }
+}
+
+.log-line { animation: line-in 160ms ease-out both; }
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}

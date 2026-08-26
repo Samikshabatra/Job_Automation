@@ -11,6 +11,19 @@ class Field:
     kind: str
     required: bool = False
 
+    @property
+    def key(self) -> str:
+        """Stable identity for this field across mapping and filling.
+
+        `name` when the form supplies one, else `id`. Modern Greenhouse (and
+        React-rendered forms generally) put identity in `id`/`aria-label` and
+        omit `name` entirely -- a live PhonePe posting had 2 of 50 fields
+        named -- so keying on `name` alone collapsed every such field onto the
+        empty string and filled nothing. `fill_form` resolves this back to a
+        locator by trying `[name=...]` first, then `[id=...]`.
+        """
+        return self.name or self.id
+
 
 @dataclass
 class Mapping:
@@ -61,10 +74,10 @@ def map_fields(fields, profile) -> Mapping:
         hay = _hay(f)
         hit = next((k for k, pats in _PATTERNS.items() if any(p in hay for p in pats)), None)
         if hit and supply.get(hit):
-            values[f.name] = supply[hit]
+            values[f.key] = supply[hit]
             matched += 1
         elif f.required:
-            unmapped.append(f.name)
+            unmapped.append(f.key)
     confidence = matched / (countable or 1)
     return Mapping(values, unmapped, confidence)
 
@@ -83,6 +96,6 @@ def merge_llm_mapping(mapping: Mapping, fields, extra: dict) -> Mapping:
     mapping.unmapped = [name for name in mapping.unmapped if name not in extra]
     countable = [f for f in fields if f.kind not in _UNCOUNTED_KINDS]
     total = len(countable) or 1
-    filled = sum(1 for f in countable if f.name in mapping.values)
+    filled = sum(1 for f in countable if f.key in mapping.values)
     mapping.confidence = min(1.0, filled / total)
     return mapping

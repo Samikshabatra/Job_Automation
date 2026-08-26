@@ -56,5 +56,25 @@ def test_real_criteria_yaml_has_explicit_new_keys():
     assert submission["dry_run"] is True  # must not be disturbed
 
     s = load_settings("config/criteria.yaml")
-    assert s.browser_enabled is False
     assert s.confidence_threshold == 0.85
+
+
+def test_real_criteria_never_enables_the_browser_without_dry_run():
+    """The safety invariant, pinned against the real config file.
+
+    This replaces an assertion that `browser_enabled` is False. That flag is
+    now deliberately on so the agent can open and fill real forms, and the
+    thing actually standing between filling and submitting is `dry_run`:
+    `graph.decide` routes any dry_run to "manual", which screenshots and
+    returns without ever reaching `submit_and_read`. So the invariant worth
+    enforcing is not "the browser is off" but "the browser is never live
+    while dry_run is off" -- flipping dry_run to false must be a separate,
+    deliberate act, never a side effect of enabling the browser.
+    """
+    s = load_settings("config/criteria.yaml")
+    if s.browser_enabled:
+        assert s.dry_run is True, (
+            "browser_enabled is true with dry_run false: this configuration "
+            "submits real applications. Turn dry_run back on, or change this "
+            "test deliberately when going live."
+        )
