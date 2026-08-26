@@ -17,6 +17,7 @@ from pathlib import Path
 
 from apply_agent.config import load_settings, load_profile
 from apply_agent.review import review_queue
+from apply_agent.urls import application_url
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 
@@ -73,7 +74,9 @@ def _build_deps(settings, profile, total):
         def open_and_fill(self, job, profile):
             seen["n"] += 1
             print(f"\n  [{seen['n']}/{total}] {job.company} - {job.title}")
-            page = loop.run_until_complete(browser_mod.open_form(context, job.url))
+            page = loop.run_until_complete(
+                browser_mod.open_form(context, application_url(job.url, job.ats_platform))
+            )
             pages[job.id] = page
             # Give a client-rendered form time to hydrate before reading it.
             loop.run_until_complete(page.wait_for_timeout(3000))

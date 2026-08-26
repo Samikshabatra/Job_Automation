@@ -73,16 +73,37 @@ export function Tailoring({ onOpenJob }: { onOpenJob: (id: number) => void }) {
                 <Button onClick={() => onOpenJob(current.job_id)}>Open job</Button>
               }
             >
+              {/*
+                No "AI confidence" tile: the tailoring step produces no such
+                number, and a figure invented to fill a slot would be read as
+                a measurement. Everything here is measured.
+              */}
               <div className="grid grid-cols-2 gap-3 border-b border-hairline p-5 sm:grid-cols-4">
-                <Metric label="AI confidence" value={pct(current.ai_confidence)} />
                 <Metric
                   label="Similarity"
                   value={current.similarity?.toFixed(2) ?? '--'}
-                  hint="Higher means closer to your real resume"
+                  hint="1.00 means nothing was reworded"
                 />
-                <Metric label="Verdict" value={current.verdict ?? '--'} />
-                <Metric label="Rendered" value={current.resume_path ? 'Yes' : 'No'} />
+                <Metric
+                  label="Bullets rewritten"
+                  value={String(rewrittenCount(current.original_json, current.tailored_json))}
+                  hint="Reworded from your own text"
+                />
+                <Metric
+                  label="Fabrication check"
+                  value={current.verdict === 'pass' ? 'Passed' : current.verdict === 'fail' ? 'Rejected' : '--'}
+                />
+                <Metric label="Resume rendered" value={current.resume_path ? 'Yes' : 'No'} />
               </div>
+
+              {offendingOf(current.tailored_json).length > 0 && (
+                <div className="border-b border-hairline p-5">
+                  <div className="eyebrow mb-2 text-bad">Why this pass was rejected</div>
+                  <ul className="space-y-1 text-xs text-bad">
+                    {offendingOf(current.tailored_json).map((o, i) => <li key={i}>{o}</li>)}
+                  </ul>
+                </div>
+              )}
 
               <div className="px-5 pt-3">
                 <Tabs<View>
@@ -145,7 +166,32 @@ function Metric({ label, value, hint }: { label: string; value: string; hint?: s
   );
 }
 
-const pct = (v: number | null) => (v === null ? '--' : `${Math.round(v * 100)}%`);
+/** What the anti-fabrication check objected to, stored alongside the pass. */
+function offendingOf(tailoredJson: string): string[] {
+  try {
+    const v = JSON.parse(tailoredJson) as { offending?: unknown };
+    return Array.isArray(v.offending) ? v.offending.map(String) : [];
+  } catch {
+    return [];
+  }
+}
+
+/** Tailored bullets whose text differs from the bullet they came from. */
+function rewrittenCount(originalJson: string, tailoredJson: string): number {
+  try {
+    const source = new Map<string, string>();
+    for (const e of (JSON.parse(originalJson).entries ?? []) as { bullets?: { id: string; text: string }[] }[]) {
+      for (const b of e.bullets ?? []) source.set(b.id, b.text);
+    }
+    const tailored = (JSON.parse(tailoredJson).entries ?? []) as { bullets?: { id: string; text: string }[] }[];
+    return tailored
+      .flatMap((e) => e.bullets ?? [])
+      .filter((b) => source.get(b.id) !== undefined && source.get(b.id) !== b.text)
+      .length;
+  } catch {
+    return 0;
+  }
+}
 
 function safePretty(json: string): string {
   try { return JSON.stringify(JSON.parse(json), null, 2); } catch { return json; }

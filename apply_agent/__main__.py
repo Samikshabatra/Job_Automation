@@ -37,6 +37,8 @@ from typing import Any
 from apply_agent.db import queued_jobs, record_submitted, mark_status, count_applied_today
 from apply_agent.guards import preflight
 from apply_agent.graph import decide, verify_submit
+from apply_agent.urls import application_url
+from apply_agent.events import make_recorder, noop as _noop_event
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 
@@ -61,14 +63,19 @@ def _start_of_day_iso(now: datetime) -> str:
     return datetime(now.year, now.month, now.day, tzinfo=now.tzinfo).isoformat()
 
 
-def run(conn, settings, profile, deps, now, only_job_id=None) -> Summary:
+def run(conn, settings, profile, deps, now, only_job_id=None, event=None) -> Summary:
     """Process every queued job once, synchronously, through the safety
     gates described above. Returns a `Summary` of what happened.
 
     `only_job_id` restricts the run to a single queued job -- used to keep a
     first live browser run to one form. It narrows the selection only; every
-    preflight gate and the dry_run routing still apply to that job."""
+    preflight gate and the dry_run routing still apply to that job.
+
+    `event` records a step-level trace for the dashboard to read back. It
+    defaults to a no-op, and every call it makes is best-effort: the trace is
+    never allowed to affect what the run does."""
     s = Summary()
+    event = event or _noop_event
     # Seed today's submission count so the daily cap accounts for
     # applications already submitted earlier today (e.g. an earlier `run`
     # invocation), not just this call.
@@ -86,6 +93,7 @@ def run(conn, settings, profile, deps, now, only_job_id=None) -> Summary:
         try:
             pre = preflight(conn, job, settings, submitted_this_run, now, deps.is_open)
             if not pre.allow:
+                event("blocked", detail=pre.reason, job_id=job.id)
                 if pre.status in _TRANSIENT_STATUSES:
                     # Transient skip (kill-switch): do NOT write jobs.status --
                     # leave the job queued so a later run picks it up. Still
@@ -99,11 +107,25 @@ def run(conn, settings, profile, deps, now, only_job_id=None) -> Summary:
                     s.skipped += 1
                 continue
 
+            event("opening", detail=f"{job.title} at {job.company}", job_id=job.id)
             form = deps.open_and_map(job, profile)  # -> object with .mapping, .html
+            event(
+                "mapped",
+                detail=f"{len(form.mapping.values)} field(s) filled, "
+                       f"{len(form.mapping.unmapped)} required field(s) left blank",
+                job_id=job.id,
+                confidence=form.mapping.confidence,
+            )
             route = decide(
                 form.mapping, deps.has_captcha(form.html), settings.dry_run, settings.confidence_threshold
             )
             if route == "manual":
+                event(
+                    "manual review",
+                    detail="dry run" if settings.dry_run else "low confidence, captcha or a blank required field",
+                    job_id=job.id,
+                    confidence=form.mapping.confidence,
+                )
                 deps.screenshot(job)
                 if settings.dry_run:
                     # Dry-run is a transient skip too: preview/fill the form and
@@ -115,8 +137,14 @@ def run(conn, settings, profile, deps, now, only_job_id=None) -> Summary:
                 s.held += 1
                 continue
 
+            event("submitting", detail=job.url, job_id=job.id, confidence=form.mapping.confidence)
             outcome = verify_submit(deps.submit_and_read(job), deps.is_confirmation)
             submit_attempted = True
+            event(
+                "submitted" if outcome == "submitted" else "submit unconfirmed",
+                detail=f"{job.title} at {job.company}",
+                job_id=job.id,
+            )
             if outcome == "submitted":
                 record_submitted(conn, job, profile.email)
                 s.submitted += 1
@@ -129,6 +157,7 @@ def run(conn, settings, profile, deps, now, only_job_id=None) -> Summary:
             # job must not abort the batch. Mark it failed (a terminal status --
             # NOT re-queued, so a job that errored after a real submit click is
             # never retried into a double-submit) and move on to the next job.
+            event("error", detail=str(exc)[:400], job_id=job.id)
             mark_status(conn, job.id, "failed", f"unhandled error: {exc}")
             s.failed += 1
             continue
@@ -215,7 +244,9 @@ def _build_real_deps(settings, gemini_call):
                 return False
 
         def open_and_map(self, job, profile):
-            page = loop.run_until_complete(browser_mod.open_form(context, job.url))
+            page = loop.run_until_complete(
+                browser_mod.open_form(context, application_url(job.url, job.ats_platform))
+            )
             pages[job.id] = page
             fields = loop.run_until_complete(browser_mod.read_fields(page))
             mapping = fieldmap.map_fields(fields, profile)
@@ -284,9 +315,24 @@ def main() -> None:
     # queued job. No argument keeps the previous behaviour, the whole queue.
     only_job_id = int(sys.argv[1]) if len(sys.argv) > 1 else None
 
+    # The dashboard sets JOBPILOT_RUN_ID when it spawns the agent, so the trace
+    # can be tied back to the run row it created. Absent (a plain command-line
+    # run) the events are still recorded, just against no run.
+    raw_run_id = os.environ.get("JOBPILOT_RUN_ID", "").strip()
+    run_id = int(raw_run_id) if raw_run_id.isdigit() else None
+    event = make_recorder(conn, run_id)
+
     deps, close_deps = _build_real_deps(settings, _gemini_call)
     try:
-        summary = run(conn, settings, profile, deps, datetime.now(timezone.utc), only_job_id)
+        event("run started", detail=f"queue narrowed to job {only_job_id}" if only_job_id else "full queue")
+        summary = run(conn, settings, profile, deps, datetime.now(timezone.utc), only_job_id, event)
+        # Emitted before the connection is closed in `finally`, or the closing
+        # event is silently dropped by the recorder's own error swallowing.
+        event(
+            "run finished",
+            detail=f"submitted={summary.submitted} held={summary.held} "
+                   f"failed={summary.failed} skipped={summary.skipped}",
+        )
     finally:
         close_deps()
         conn.close()

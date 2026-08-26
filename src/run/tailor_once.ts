@@ -5,6 +5,7 @@ import { pathToFileURL } from 'node:url';
 import type { Database } from 'better-sqlite3';
 import { openDb } from '../db/index.js';
 import { getJobById } from '../db/jobs.js';
+import { recordTailorRun } from '../db/tailorRuns.js';
 import { extractSkills } from '../score/extract.js';
 import { loadResume, type Resume } from '../tailor/resume.js';
 import { selectEntries } from '../tailor/select.js';
@@ -57,14 +58,36 @@ export async function tailorOnce(deps: TailorOnceDeps): Promise<TailorOnceResult
   const check = verifyNoFabrication(
     tailored, resume.experience, Object.keys(resume.skills), job.title,
   );
-  if (!check.ok) return { ok: false, offending: check.offending };
+  // Every attempt is recorded, pass or fail. This path IS the repair loop, so
+  // the sequence of rows for one job is the record of the optimizer trying and
+  // either converging or not -- which is the whole question a human has about
+  // a job that keeps failing the fabrication gate.
+  const runId = runIdFromEnv();
+
+  if (!check.ok) {
+    recordTailorRun(db, {
+      jobId, runId, source: resume.experience, tailored,
+      verdict: 'fail', offending: check.offending, resumePath: null,
+    });
+    return { ok: false, offending: check.offending };
+  }
 
   const out = resumePath(archiveDir, job.company, job.title, now);
   await render(
     buildRenderInput(resume.profile, tailored, resume.experience, resume.education, Object.keys(resume.skills)),
     out,
   );
+  recordTailorRun(db, {
+    jobId, runId, source: resume.experience, tailored,
+    verdict: 'pass', offending: [], resumePath: out,
+  });
   return { ok: true, offending: [], resumePath: out };
+}
+
+/** The dashboard run this pass belongs to, or null outside one. */
+function runIdFromEnv(): number | null {
+  const raw = (process.env.JOBPILOT_RUN_ID ?? '').trim();
+  return /^\d+$/.test(raw) ? Number(raw) : null;
 }
 
 /**

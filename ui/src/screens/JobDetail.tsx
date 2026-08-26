@@ -103,9 +103,12 @@ export function JobDetail({ id, onBack }: { id: number; onBack: () => void }) {
           ) : data.tailor ? (
             <div className="space-y-4 p-5">
               <div className="flex flex-wrap gap-3">
-                <Metric label="AI confidence" value={pctOf(data.tailor.ai_confidence)} />
                 <Metric label="Similarity to your real resume" value={data.tailor.similarity?.toFixed(2) ?? '--'} />
-                <Metric label="Verdict" value={data.tailor.verdict ?? '--'} />
+                <Metric
+                  label="Fabrication check"
+                  value={data.tailor.verdict === 'pass' ? 'Passed'
+                    : data.tailor.verdict === 'fail' ? 'Rejected' : '--'}
+                />
               </div>
               {data.tailor.sections.map((s) => (
                 <div key={s.heading}>
@@ -179,4 +182,3 @@ function Metric({ label, value }: { label: string; value: string }) {
   );
 }
 
-const pctOf = (v: number | null) => (v === null ? '--' : `${Math.round(v * 100)}%`);

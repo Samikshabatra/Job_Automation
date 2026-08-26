@@ -1,8 +1,9 @@
 # apply_agent/tests/test_browser.py
 import pathlib
 import pytest
+import pytest_asyncio
 from playwright.async_api import async_playwright
-from apply_agent.browser import read_fields, fill_form
+from apply_agent.browser import read_fields, fill_form, open_form
 
 FIX = pathlib.Path(__file__).parent / "fixtures" / "greenhouse_form.html"
 
@@ -157,3 +158,104 @@ async def test_aria_required_counts_as_required():
         assert by_key["phone"].required is False           # neither marker -> not required
     finally:
         await browser.close(); await pw.stop()
+
+
+SPA = pathlib.Path(__file__).parent / "fixtures" / "spa_form.html"
+
+
+async def _spa_context():
+    """A browser context serving a form that only exists after the app mounts."""
+    pw = await async_playwright().start()
+    browser = await pw.chromium.launch()
+    ctx = await browser.new_context()
+    await ctx.route("**/*", lambda route: route.fulfill(body=SPA.read_text(), content_type="text/html"))
+    return pw, browser, ctx
+
+
+@pytest.mark.asyncio
+async def test_open_form_waits_for_a_client_rendered_form():
+    # Ashby postings, and modern Greenhouse ones, render their fields in
+    # JavaScript. Returning at domcontentloaded hands back an empty document,
+    # read_fields finds nothing, and the agent decides the posting has no form
+    # and routes a perfectly good job to manual review.
+    pw, browser, ctx = await _spa_context()
+    try:
+        page = await open_form(ctx, "https://jobs.ashbyhq.com/acme/abc-123")
+        names = {f.name for f in await read_fields(page)}
+        assert {"first_name", "last_name", "email"} <= names
+    finally:
+        await browser.close(); await pw.stop()
+
+
+@pytest.mark.asyncio
+async def test_open_form_returns_a_page_when_no_form_ever_appears():
+    # A closed posting, a login wall or a plain article has no fields and never
+    # will. That must come back as an empty form for the caller to route, not
+    # as an exception that marks the job failed.
+    pw = await async_playwright().start()
+    browser = await pw.chromium.launch()
+    ctx = await browser.new_context()
+    await ctx.route(
+        "**/*",
+        lambda route: route.fulfill(body="<html><body><p>Position closed</p></body></html>",
+                                    content_type="text/html"),
+    )
+    try:
+        page = await open_form(ctx, "https://jobs.ashbyhq.com/acme/gone")
+        assert await read_fields(page) == []
+    finally:
+        await browser.close(); await pw.stop()
+
+
+LABELLED = pathlib.Path(__file__).parent / "fixtures" / "labelled_form.html"
+
+
+@pytest_asyncio.fixture(scope="module")
+async def labelled_fields():
+    """Read the label fixture once and share the result.
+
+    Every assertion below inspects the same static page, and launching a
+    Chromium per assertion made the suite slow enough that browser startup
+    began timing out under its own load. One launch, one read, six checks.
+    """
+    pw = await async_playwright().start()
+    browser = await pw.chromium.launch()
+    try:
+        ctx = await browser.new_context()
+        page = await ctx.new_page()
+        await page.route("**/*", lambda route: route.fulfill(body=LABELLED.read_text(), content_type="text/html"))
+        await page.goto("https://jobs.ashbyhq.com/acme/abc/application")
+        yield {f.key: f for f in await read_fields(page)}
+    finally:
+        await browser.close(); await pw.stop()
+
+
+async def test_label_for_supplies_the_identity_of_a_uuid_keyed_field(labelled_fields):
+    # Ashby gives custom questions opaque UUID names. Without the <label for>
+    # the mapper sees "3fdc76ed-6ac2-..." and can map nothing, so an ordinary
+    # phone box lands in `unmapped` and forces the whole form to manual review.
+    assert labelled_fields["3fdc76ed-6ac2-497a-a6cc-e07ed517ec1d"].label == "Phone Number"
+
+
+async def test_a_real_label_beats_a_generic_placeholder(labelled_fields):
+    # "Type here..." is not a description of anything. Preferring it over the
+    # label was actively destroying the only usable identity on the field.
+    assert labelled_fields["_systemfield_name"].label == "Full Name"
+
+
+async def test_aria_labelledby_is_resolved_to_its_text(labelled_fields):
+    assert labelled_fields["f63fdc3f-8d4c-49fc-9388-3a9ef836de55"].label == "LinkedIn Profile, if available"
+
+
+async def test_a_wrapping_label_is_used_when_there_is_no_for_attribute(labelled_fields):
+    assert labelled_fields["c779ac6e-4fe0-4dfe-9dfa-acd7e2823ba7"].label == "Where have you most recently worked?"
+
+
+async def test_aria_label_is_used_when_nothing_else_describes_the_field(labelled_fields):
+    assert labelled_fields["q_aria"].label == "Expected annual compensation"
+
+
+async def test_placeholder_still_used_as_the_last_readable_source(labelled_fields):
+    # Demoted, not discarded. On a form with no labels at all it is the only
+    # human-readable thing left.
+    assert labelled_fields["q_placeholder_only"].label == "Notice period in days"

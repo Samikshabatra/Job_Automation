@@ -75,3 +75,63 @@ def test_merge_llm_confidence_excludes_file_input():
     m = Mapping(values={}, unmapped=["q_custom"], confidence=0.0)
     merge_llm_mapping(m, fields, {"q_custom": "because"})
     assert m.confidence == 1.0          # 1 filled / 1 countable -- file excluded
+
+
+def _f(name, label="", required=True):
+    return Field(name=name, label=label, id="", aria="", kind="text", required=required)
+
+
+def test_maps_a_bare_name_field_to_the_full_name():
+    # Ashby names its identity fields `_systemfield_name` / `_systemfield_email`
+    # and renders the human label in a separate element. Requiring the words
+    # "full name" left a live Snowflake form with its Full Name box empty while
+    # Email filled correctly.
+    m = map_fields([_f("_systemfield_name")], PROF)
+    assert m.values["_systemfield_name"] == "Samiksha Batra"
+
+
+def test_a_bare_name_rule_does_not_steal_first_and_last_name_fields():
+    # "first_name" and "last_name" both contain "name". They must keep going to
+    # the split parts, or a form with separate boxes gets the full name in both.
+    m = map_fields([_f("first_name"), _f("last_name")], PROF)
+    assert m.values["first_name"] == "Samiksha"
+    assert m.values["last_name"] == "Batra"
+
+
+def test_a_bare_name_rule_does_not_claim_unrelated_name_questions():
+    # A custom question is not an identity field. Answering it with the
+    # candidate's own name submits a wrong answer instead of leaving a blank
+    # one for a human to fill.
+    m = map_fields([_f("company_name"), _f("referrer_name")], PROF)
+    assert "company_name" not in m.values
+    assert "referrer_name" not in m.values
+
+
+def _choice(name, label, kind, required=True):
+    return Field(name=name, label=label, id="", aria="", kind=kind, required=required)
+
+
+def test_a_checkbox_is_never_filled_with_a_profile_value():
+    # A live Notion form asks "How did you hear about us?" as a checkbox list,
+    # one option of which is labelled "LinkedIn". Matching it against the
+    # linkedin pattern typed the candidate's profile URL into a tick box --
+    # a confidently wrong answer on a real application.
+    m = map_fields([_choice("e01a85db", "LinkedIn", "checkbox")], PROF)
+    assert m.values == {}
+
+
+def test_a_radio_option_is_never_filled_with_a_profile_value():
+    m = map_fields([_choice("q_source", "Email", "radio")], PROF)
+    assert m.values == {}
+
+
+def test_a_required_choice_field_still_counts_as_unmapped():
+    # It is a real question with no answer, so it must keep forcing manual
+    # review rather than quietly disappearing from the gate.
+    m = map_fields([_choice("consent", "I agree to the privacy notice", "checkbox")], PROF)
+    assert "consent" in m.unmapped
+
+
+def test_text_fields_are_unaffected_by_the_choice_guard():
+    m = map_fields([_f("linkedin_url", label="LinkedIn Profile")], PROF)
+    assert m.values["linkedin_url"] == "http://li/x"

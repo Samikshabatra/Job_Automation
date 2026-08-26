@@ -65,6 +65,45 @@ describe('tailorOnce', () => {
     expect(render).not.toHaveBeenCalled();
   });
 
+  it('records a passing tailoring pass in the history', async () => {
+    const jobId = seedJob();
+    await tailorOnce({
+      db, jobId, resume, now: new Date('2026-08-18T00:00:00Z'), archiveDir: '/out',
+      callLlm: async () => faithful, render: async () => {},
+    });
+
+    const row = db.prepare('SELECT * FROM tailor_runs WHERE job_id = ?').get(jobId) as
+      { verdict: string; similarity: number; resume_path: string | null };
+    expect(row.verdict).toBe('pass');
+    expect(row.resume_path).toContain('.pdf');
+    expect(row.similarity).toBeGreaterThan(0);
+  });
+
+  it('records a fabrication failure, which is the pass a human most needs to see', async () => {
+    const jobId = seedJob();
+    await tailorOnce({
+      db, jobId, resume, now: new Date('2026-08-18T00:00:00Z'), archiveDir: '/out',
+      callLlm: async () => fabricated, render: async () => {},
+    });
+
+    const row = db.prepare('SELECT * FROM tailor_runs WHERE job_id = ?').get(jobId) as
+      { verdict: string; tailored_json: string; resume_path: string | null };
+    expect(row.verdict).toBe('fail');
+    expect(row.resume_path).toBe(null);
+    expect(row.tailored_json).toContain('Google');
+  });
+
+  it('keeps one row per repair attempt rather than overwriting', async () => {
+    const jobId = seedJob();
+    const opts = { db, jobId, resume, now: new Date('2026-08-18T00:00:00Z'), archiveDir: '/out', render: async () => {} };
+    await tailorOnce({ ...opts, callLlm: async () => fabricated });
+    await tailorOnce({ ...opts, callLlm: async () => faithful });
+
+    const verdicts = (db.prepare('SELECT verdict FROM tailor_runs WHERE job_id = ? ORDER BY id').all(jobId) as
+      { verdict: string }[]).map((r) => r.verdict);
+    expect(verdicts).toEqual(['fail', 'pass']);
+  });
+
   it('passes the repair hint through to the tailor prompt', async () => {
     const jobId = seedJob();
     const call = vi.fn(async () => faithful);
