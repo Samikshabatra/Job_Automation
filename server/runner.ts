@@ -129,7 +129,10 @@ export class JobRunner {
       // npm on Windows is a shim that cannot be exec'd directly. The args are
       // constants from buildArgv, so there is no injection surface here.
       shell: isWindows,
-      env: process.env,
+      // The run id travels in the environment rather than argv: the agent uses
+      // it to tag its step-level trace, and argv stays a fixed lookup with no
+      // caller-supplied element beyond the validated job id.
+      env: { ...process.env, JOBPILOT_RUN_ID: String(runId) },
     });
 
     this.child = child;

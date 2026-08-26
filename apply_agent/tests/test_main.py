@@ -371,3 +371,72 @@ def test_already_applied_fingerprint_is_skipped_not_submitted():
     assert conn.execute("SELECT COUNT(*) n FROM applications").fetchone()["n"] == 1
     job2 = conn.execute("SELECT status, status_reason FROM jobs WHERE id=2").fetchone()
     assert job2["status"] == "skipped" and "already applied" in job2["status_reason"]
+
+
+# --------------------------------------------------------------------------
+# Trace: run() reports its own steps so the dashboard can show what happened.
+# --------------------------------------------------------------------------
+
+def _trace():
+    """A recorder that keeps every step, standing in for the sqlite writer."""
+    steps = []
+
+    def event(step, detail="", job_id=None, confidence=None):
+        steps.append({"step": step, "detail": detail, "job_id": job_id, "confidence": confidence})
+
+    return steps, event
+
+
+def test_trace_reports_opening_mapping_and_submitting():
+    conn, deps = _conn(), _fake_deps()
+    steps, event = _trace()
+    run(conn, _settings(), _profile(), deps, datetime.now(timezone.utc), None, event)
+
+    assert [s["step"] for s in steps] == ["opening", "mapped", "submitting", "submitted"]
+    assert all(s["job_id"] == 1 for s in steps)
+
+
+def test_trace_carries_the_mapping_confidence():
+    conn, deps = _conn(), _fake_deps(confidence=0.42)
+    steps, event = _trace()
+    run(conn, _settings(confidence_threshold=0.85), _profile(), deps, datetime.now(timezone.utc), None, event)
+
+    mapped = next(s for s in steps if s["step"] == "mapped")
+    assert mapped["confidence"] == 0.42
+
+
+def test_trace_names_dry_run_as_the_reason_for_manual_review():
+    # The operator needs to tell "I chose not to submit" apart from "the agent
+    # could not fill this", and the dashboard shows this string verbatim.
+    conn, deps = _conn(), _fake_deps()
+    steps, event = _trace()
+    run(conn, _settings(dry_run=True), _profile(), deps, datetime.now(timezone.utc), None, event)
+
+    manual = next(s for s in steps if s["step"] == "manual review")
+    assert manual["detail"] == "dry run"
+
+
+def test_trace_reports_a_blocked_job_with_its_reason():
+    conn, deps = _conn(), _fake_deps(blow_up_on_open=True)
+    steps, event = _trace()
+    run(conn, _settings(browser_enabled=False), _profile(), deps, datetime.now(timezone.utc), None, event)
+
+    assert steps[0]["step"] == "blocked"
+    assert "disabled" in steps[0]["detail"]
+
+
+def test_trace_reports_a_job_that_errored():
+    conn, deps = _conn(), _fake_deps(raise_on_open=frozenset({1}))
+    steps, event = _trace()
+    run(conn, _settings(), _profile(), deps, datetime.now(timezone.utc), None, event)
+
+    error = next(s for s in steps if s["step"] == "error")
+    assert "boom while mapping job 1" in error["detail"]
+
+
+def test_run_works_with_no_recorder_at_all():
+    # The trace is a convenience for the dashboard. Every existing caller omits
+    # it, and the run must behave identically without one.
+    conn, deps = _conn(), _fake_deps()
+    summary = run(conn, _settings(), _profile(), deps, datetime.now(timezone.utc))
+    assert summary.submitted == 1

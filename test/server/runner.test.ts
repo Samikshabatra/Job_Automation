@@ -14,10 +14,10 @@ class FakeChild extends EventEmitter {
 }
 
 function fakeSpawn() {
-  const calls: { cmd: string; args: string[] }[] = [];
+  const calls: { cmd: string; args: string[]; opts: { env?: Record<string, string> } }[] = [];
   let last: FakeChild | null = null;
-  const spawn = (cmd: string, args: string[]) => {
-    calls.push({ cmd, args });
+  const spawn = (cmd: string, args: string[], opts: object) => {
+    calls.push({ cmd, args, opts: opts as { env?: Record<string, string> } });
     last = new FakeChild();
     return last as never;
   };
@@ -85,6 +85,17 @@ describe('JobRunner', () => {
 
     const row = db.prepare('SELECT dry_run FROM runs WHERE id = ?').get(runId) as { dry_run: number };
     expect(row.dry_run).toBe(0);
+  });
+
+  it('passes the run id to the child in the environment, not in argv', () => {
+    // The agent tags its step trace with this. It travels in the environment
+    // so argv stays a fixed lookup with no caller-supplied element.
+    const f = fakeSpawn();
+    const runner = new JobRunner(db, f.spawn as never);
+    const { runId } = runner.start('agent', DRY);
+
+    expect(f.calls[0]!.opts.env?.JOBPILOT_RUN_ID).toBe(String(runId));
+    expect(f.calls[0]!.args.join(' ')).not.toContain(String(runId));
   });
 
   it('refuses a second run while one is alive', () => {
