@@ -37,6 +37,7 @@ from typing import Any
 from apply_agent.db import queued_jobs, record_submitted, mark_status, count_applied_today
 from apply_agent.guards import preflight
 from apply_agent.graph import decide, verify_submit
+from apply_agent.urls import application_url
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 
@@ -215,7 +216,9 @@ def _build_real_deps(settings, gemini_call):
                 return False
 
         def open_and_map(self, job, profile):
-            page = loop.run_until_complete(browser_mod.open_form(context, job.url))
+            page = loop.run_until_complete(
+                browser_mod.open_form(context, application_url(job.url, job.ats_platform))
+            )
             pages[job.id] = page
             fields = loop.run_until_complete(browser_mod.read_fields(page))
             mapping = fieldmap.map_fields(fields, profile)

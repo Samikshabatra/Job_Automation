@@ -1,0 +1,41 @@
+<!doctype html>
+<html>
+  <head><title>Apply</title></head>
+  <body>
+    <!--
+      Label shapes taken from a live Ashby posting. The identity of a custom
+      question lives ONLY in its <label for>: the field's own name and id are
+      opaque UUIDs, and the placeholder is generic filler that actively
+      misleads a matcher that trusts it.
+    -->
+    <form>
+      <!-- label[for] against a UUID key, with a junk placeholder -->
+      <label for="3fdc76ed-6ac2-497a-a6cc-e07ed517ec1d">Phone Number</label>
+      <input id="3fdc76ed-6ac2-497a-a6cc-e07ed517ec1d"
+             name="3fdc76ed-6ac2-497a-a6cc-e07ed517ec1d"
+             type="tel" placeholder="1-415-555-1234..." aria-required="true" />
+
+      <!-- a system field whose real label is only in the label element -->
+      <label for="_systemfield_name">Full Name</label>
+      <input id="_systemfield_name" name="_systemfield_name"
+             type="text" placeholder="Type here..." aria-required="true" />
+
+      <!-- aria-labelledby pointing at a separate node -->
+      <span id="lbl-linkedin">LinkedIn Profile, if available</span>
+      <textarea name="f63fdc3f-8d4c-49fc-9388-3a9ef836de55"
+                aria-labelledby="lbl-linkedin" placeholder="Type here..."></textarea>
+
+      <!-- the input wrapped by its own label, no `for` at all -->
+      <label>
+        Where have you most recently worked?
+        <input name="c779ac6e-4fe0-4dfe-9dfa-acd7e2823ba7" type="text" placeholder="Type here..." />
+      </label>
+
+      <!-- aria-label only: nothing else describes it -->
+      <input name="q_aria" type="text" aria-label="Expected annual compensation" />
+
+      <!-- nothing but a placeholder: it is the last readable thing, so it wins -->
+      <input name="q_placeholder_only" type="text" placeholder="Notice period in days" />
+    </form>
+  </body>
+</html>
