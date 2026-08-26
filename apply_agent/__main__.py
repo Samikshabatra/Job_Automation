@@ -256,7 +256,9 @@ def _build_real_deps(settings, gemini_call):
                 # Re-blend confidence so a form the heuristic scored low but the
                 # LLM then fully mapped is no longer routed to manual (F4).
                 fieldmap.merge_llm_mapping(mapping, fields, extra)
-            loop.run_until_complete(browser_mod.fill_form(page, mapping.values, job.resume_path))
+            loop.run_until_complete(
+                browser_mod.fill_form(page, mapping.values, job.resume_path, profile.location)
+            )
             html = loop.run_until_complete(page.content())
             return SimpleNamespace(mapping=mapping, html=html)
 

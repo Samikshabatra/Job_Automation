@@ -117,11 +117,14 @@ async def read_fields(page) -> list[Field]:
     ]
 
 
-async def fill_form(page, values: dict, resume_path) -> None:
+async def fill_form(page, values: dict, resume_path, location: str | None = None) -> None:
     """Fill each mapped value. Keys are `Field.key`, i.e. a `name` when the
     form had one and an `id` otherwise, so both are resolved here. Attribute
     selectors are used rather than `#id` so ids that are not valid CSS
     identifiers (leading digits, colons) still match without escaping.
+
+    `location` fills a type-ahead, which the key-based mapping above cannot
+    reach: see `_fill_location_combobox`.
     """
     for key, value in values.items():
         loc = page.locator(f"[name={key!r}]")
@@ -133,6 +136,8 @@ async def fill_form(page, values: dict, resume_path) -> None:
         index = await _resume_input_index(page)
         if index is not None:
             await page.locator("input[type=file]").nth(index).set_input_files(resume_path)
+    if location:
+        await _fill_location_combobox(page, location)
 
 
 # Describes each file input by whatever text identifies it, in DOM order, so
@@ -213,6 +218,102 @@ async def _resume_input_index(page) -> int | None:
         return 0
 
     return None
+
+
+# The text around each ARIA combobox, in DOM order. A type-ahead on these
+# forms carries no name, no id and no <label for>; the nearest ancestor that
+# holds a short block of text is the only thing that says what it is asking.
+_COMBOBOX_CONTEXT_JS = """
+() => Array.from(document.querySelectorAll('input[role=combobox], input[aria-autocomplete=list]'))
+  .map((el) => {
+    let node = el.parentElement, text = '';
+    for (let i = 0; i < 5 && node; i++, node = node.parentElement) {
+      const t = (node.innerText || '').replace(/\\s+/g, ' ').trim();
+      if (t && t.length < 300) { text = t; break; }
+    }
+    return `${text} ${el.getAttribute('aria-label') || ''} ${el.getAttribute('placeholder') || ''}`.toLowerCase();
+  })
+"""
+
+_LOCATION_WORDS = ("location", "where are you based", "city of residence",
+                   "country of residence", "where do you live")
+
+OPTION_WAIT_MS = 4000
+
+
+async def _fill_location_combobox(page, location: str) -> None:
+    """Type into the location type-ahead and choose the matching option.
+
+    A type-ahead holds no value until an option is chosen, so `fill()` alone
+    leaves the field empty -- which is what happened on every application: a
+    required field silently blank. The key-based mapping cannot reach it at
+    all, because the input carries no name and no id.
+
+    Choosing nothing is a real answer. An option is only clicked when it
+    plainly corresponds to the candidate's stated location; taking whatever
+    happened to be listed first would put a wrong address on a real
+    application, and a blank required field forces manual review instead.
+    """
+    try:
+        contexts = await page.evaluate(_COMBOBOX_CONTEXT_JS)
+    except Exception:
+        return
+
+    index = next((i for i, text in enumerate(contexts)
+                  if any(w in text for w in _LOCATION_WORDS)), None)
+    if index is None:
+        return
+
+    # The city alone, so the board's own spelling of the region can differ.
+    city = location.split(",")[0].strip()
+    if not city:
+        return
+
+    combo = page.locator("input[role=combobox], input[aria-autocomplete=list]").nth(index)
+    try:
+        await combo.click()
+        await combo.type(city, delay=40)
+
+        choice = None
+        try:
+            await page.wait_for_selector("[role=option]", timeout=OPTION_WAIT_MS, state="attached")
+            choice = _best_option(await page.locator("[role=option]").all_inner_texts(), location, city)
+        except Exception:
+            # No list ever appeared. Falls through to the clear below: the
+            # typed text must not be left behind.
+            choice = None
+
+        if choice is None:
+            # Clear the half-typed text so the field reads as untouched rather
+            # than as a value the candidate chose. A partial city name sitting
+            # in a required box is worse than an empty one -- it can be
+            # submitted, and it looks deliberate.
+            await combo.fill("")
+            return
+
+        await page.locator("[role=option]").nth(choice).click()
+    except Exception:
+        # A type-ahead that does not behave costs this one field, never the run.
+        try:
+            await combo.fill("")
+        except Exception:
+            pass
+
+
+def _best_option(options: list[str], location: str, city: str) -> int | None:
+    """The option that corresponds to `location`, or None to choose nothing."""
+    normalized = [o.replace("\n", " ").strip().lower() for o in options]
+    wanted = location.strip().lower()
+
+    for i, text in enumerate(normalized):
+        if text == wanted:
+            return i
+
+    # No exact match: accept one only if it is unambiguous. Two options both
+    # naming the city (a "Bengaluru" and a "Bengaluru Rural") is exactly the
+    # case where guessing puts the wrong address on an application.
+    matches = [i for i, text in enumerate(normalized) if text.startswith(city.lower())]
+    return matches[0] if len(matches) == 1 else None
 
 
 async def submit_form(page) -> None:

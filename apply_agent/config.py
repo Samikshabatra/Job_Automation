@@ -48,6 +48,10 @@ class Profile:
     email: str
     phone: str
     linkedin: str
+    # Defaulted so the four-argument construction used throughout the tests
+    # keeps working. Fills the location type-ahead, which carries no name or
+    # id and so cannot be reached by the key-based field mapping.
+    location: str = ""
 
 
 def load_settings(criteria_path: str) -> Settings:
@@ -66,4 +70,7 @@ def load_settings(criteria_path: str) -> Settings:
 
 def load_profile(path: str) -> Profile:
     d = json.load(open(path, encoding="utf-8"))
-    return Profile(d["name"], d["email"], d.get("phone", ""), d.get("links", {}).get("linkedin", ""))
+    return Profile(
+        d["name"], d["email"], d.get("phone", ""),
+        d.get("links", {}).get("linkedin", ""), d.get("location", ""),
+    )

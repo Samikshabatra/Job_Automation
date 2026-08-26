@@ -83,7 +83,9 @@ def _build_deps(settings, profile, total):
 
             fields = loop.run_until_complete(browser_mod.read_fields(page))
             mapping = fieldmap.map_fields(fields, profile)
-            loop.run_until_complete(browser_mod.fill_form(page, mapping.values, job.resume_path))
+            loop.run_until_complete(
+                browser_mod.fill_form(page, mapping.values, job.resume_path, profile.location)
+            )
 
             print(f"        filled {len(mapping.values)}/{len(fields)} fields"
                   f", {len(mapping.unmapped)} still need you")

@@ -1,0 +1,60 @@
+<!doctype html>
+<html>
+  <head><title>Apply</title></head>
+  <body>
+    <!--
+      An ARIA type-ahead of the shape Ashby uses for "Location". The input has
+      no name and no id -- its only identity is the surrounding label text --
+      and its value is only committed by choosing from the listbox, so typing
+      alone leaves the field empty.
+    -->
+    <form>
+      <div>
+        <div>Location</div>
+        <div>Please select your location of residence.</div>
+        <input role="combobox" aria-autocomplete="list" aria-expanded="false" placeholder="Start typing..." />
+        <ul id="loc-listbox" role="listbox"></ul>
+      </div>
+
+      <div>
+        <div>Which team interests you?</div>
+        <input role="combobox" aria-autocomplete="list" aria-expanded="false" placeholder="Start typing..." />
+        <ul id="team-listbox" role="listbox"></ul>
+      </div>
+    </form>
+
+    <script>
+      const CITIES = [
+        'Bengaluru, Karnataka, India',
+        'Bengaluru Rural, Karnataka, India',
+        'Pune, Maharashtra, India',
+        'Berlin, Germany',
+      ];
+      const TEAMS = ['Data Analytics and AI', 'Platform Engineering'];
+
+      function wire(input, listbox, source) {
+        input.addEventListener('input', () => {
+          const q = input.value.trim().toLowerCase();
+          listbox.innerHTML = '';
+          if (!q) { input.setAttribute('aria-expanded', 'false'); return; }
+          source.filter((c) => c.toLowerCase().includes(q)).forEach((c) => {
+            const li = document.createElement('li');
+            li.setAttribute('role', 'option');
+            li.textContent = c;
+            li.addEventListener('mousedown', () => {
+              input.value = c;
+              listbox.innerHTML = '';
+              input.setAttribute('aria-expanded', 'false');
+            });
+            listbox.appendChild(li);
+          });
+          input.setAttribute('aria-expanded', listbox.children.length ? 'true' : 'false');
+        });
+      }
+
+      const inputs = document.querySelectorAll('input[role=combobox]');
+      wire(inputs[0], document.getElementById('loc-listbox'), CITIES);
+      wire(inputs[1], document.getElementById('team-listbox'), TEAMS);
+    </script>
+  </body>
+</html>

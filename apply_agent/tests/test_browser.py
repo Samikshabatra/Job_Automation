@@ -366,3 +366,98 @@ async def test_a_form_with_no_file_input_is_not_an_error(tmp_path):
         await fill_form(page, {}, resume_path=str(cv))  # must not raise
     finally:
         await browser.close(); await pw.stop()
+
+
+COMBO = pathlib.Path(__file__).parent / "fixtures" / "combobox_form.html"
+
+
+async def _combo_page():
+    pw = await async_playwright().start()
+    browser = await pw.chromium.launch()
+    ctx = await browser.new_context()
+    page = await ctx.new_page()
+    await page.route("**/*", lambda route: route.fulfill(body=COMBO.read_text(), content_type="text/html"))
+    await page.goto("https://jobs.ashbyhq.com/acme/abc/application")
+    return pw, browser, page
+
+
+async def _combo_values(page):
+    return await page.evaluate(
+        "() => Array.from(document.querySelectorAll('input[role=combobox]')).map(e => e.value)")
+
+
+@pytest.mark.asyncio
+async def test_location_type_ahead_is_filled_by_choosing_the_matching_option():
+    # The value only exists once an option is chosen. Typing alone leaves the
+    # field empty, which is what happened before: a required field silently
+    # blank on every application.
+    pw, browser, page = await _combo_page()
+    try:
+        await fill_form(page, {}, resume_path=None, location="Bengaluru, Karnataka, India")
+        assert (await _combo_values(page))[0] == "Bengaluru, Karnataka, India"
+    finally:
+        await browser.close(); await pw.stop()
+
+
+@pytest.mark.asyncio
+async def test_a_type_ahead_that_is_not_about_location_is_left_alone():
+    # "Which team interests you?" is a question about the job, not about the
+    # candidate. Typing a city into it would submit a nonsense answer.
+    pw, browser, page = await _combo_page()
+    try:
+        await fill_form(page, {}, resume_path=None, location="Bengaluru, Karnataka, India")
+        assert (await _combo_values(page))[1] == ""
+    finally:
+        await browser.close(); await pw.stop()
+
+
+@pytest.mark.asyncio
+async def test_nothing_is_chosen_when_no_option_matches_the_candidate():
+    # Selecting a nearby city because it happened to be first would put a wrong
+    # address on a real application. A blank required field forces manual
+    # review, which is the right outcome.
+    pw, browser, page = await _combo_page()
+    try:
+        await fill_form(page, {}, resume_path=None, location="Reykjavik, Iceland")
+        assert (await _combo_values(page))[0] == ""
+    finally:
+        await browser.close(); await pw.stop()
+
+
+@pytest.mark.asyncio
+async def test_the_closest_option_wins_over_a_merely_similar_one():
+    # "Bengaluru Rural, Karnataka, India" also contains the typed city. The
+    # exact match for the candidate's stated location must be preferred.
+    pw, browser, page = await _combo_page()
+    try:
+        await fill_form(page, {}, resume_path=None, location="Bengaluru, Karnataka, India")
+        assert (await _combo_values(page))[0] == "Bengaluru, Karnataka, India"
+    finally:
+        await browser.close(); await pw.stop()
+
+
+@pytest.mark.asyncio
+async def test_no_location_supplied_leaves_every_type_ahead_untouched():
+    pw, browser, page = await _combo_page()
+    try:
+        await fill_form(page, {}, resume_path=None)
+        assert (await _combo_values(page)) == ["", ""]
+    finally:
+        await browser.close(); await pw.stop()
+
+
+@pytest.mark.asyncio
+async def test_a_form_with_no_type_ahead_is_not_an_error():
+    pw = await async_playwright().start()
+    browser = await pw.chromium.launch()
+    ctx = await browser.new_context()
+    page = await ctx.new_page()
+    await ctx.route("**/*", lambda route: route.fulfill(
+        body="<html><body><form><input name='email' type='email' /></form></body></html>",
+        content_type="text/html"))
+    await page.goto("https://jobs.ashbyhq.com/acme/abc/application")
+    try:
+        await fill_form(page, {"email": "me@x.com"}, resume_path=None, location="Bengaluru, Karnataka, India")
+        assert await page.input_value("[name=email]") == "me@x.com"
+    finally:
+        await browser.close(); await pw.stop()
